@@ -34,6 +34,7 @@ def clone_voice(text: str,
                 ref_audio_path: str,
                 output_path: str,
                 ref_text: str | None = None,
+                language: str | None = None,
                 response_format: str = "wav",
                 timeout: float = 300.0) -> int:
     """
@@ -45,8 +46,8 @@ def clone_voice(text: str,
         openai_api_base (str): Base URL of the OpenAI-compatible API server
         ref_audio_path (str): Path to the reference audio whose voice should be cloned
         output_path (str): Where to write the generated audio file
-        ref_text (str | None): Transcript of the reference audio. When given, the model
-            continues from the reference for a closer match (default: None)
+        ref_text (str | None): Transcript of the reference audio; improves similarity (default: None)
+        language (str | None): Language hint, e.g. "Vietnamese" or "English" (default: auto-detect)
         response_format (str): Audio container format: wav, pcm, flac, mp3, opus (default: "wav")
         timeout (float): Maximum time in seconds to wait for the response (default: 300.0)
 
@@ -62,13 +63,15 @@ def clone_voice(text: str,
     payload = {
         "model": model,                                       # Specify the model to use
         "input": text,                                        # Text to synthesize
-        "voice": "default",                                   # Placeholder, ignored by VoxCPM2
         "ref_audio": encode_audio_to_data_url(ref_audio_path),  # Reference voice (base64)
         "response_format": response_format,                   # Audio container format
     }
     # Optionally attach the reference transcript for better voice matching
     if ref_text:
         payload["ref_text"] = ref_text
+    # Optional language hint; OmniVoice auto-detects when omitted
+    if language:
+        payload["language"] = language
 
     # Send the request and wait for the whole clip
     response = requests.post(api_url,
@@ -95,7 +98,9 @@ def main():
     # Text to synthesize with the cloned voice
     text = "Xin chào, đây là giọng nói được nhân bản từ file mẫu."
     # Model name for speech synthesis
-    model_name = "openbmb/VoxCPM2"
+    model_name = "kjanh/KhanhTTS-OmniVoice"
+    # Language hint for the model (set to None to auto-detect)
+    language = "Vietnamese"
     # Where to write the generated audio
     output_path = os.path.join(RESULTS_DIR, "output_cloned.wav")
     # Make sure the results directory exists before writing into it
@@ -113,7 +118,8 @@ def main():
                                 openai_api_base = openai_api_base,
                                 ref_audio_path = ref_audio_path,
                                 output_path = output_path,
-                                ref_text = ref_text)
+                                ref_text = ref_text,
+                                language = language)
         # Calculate processing time
         processing_time = time.perf_counter() - start_time
 

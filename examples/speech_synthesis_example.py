@@ -1,5 +1,6 @@
 from openai import AsyncOpenAI
 import asyncio, os, time
+import openai
 import httpx
 
 # Directory where generated audio files are written
@@ -9,6 +10,7 @@ async def synthesize_with_openai(text: str,
                                  model: str,
                                  openai_api_base: str,
                                  output_path: str,
+                                 language: str | None = None,
                                  response_format: str = "wav",
                                  api_key: str = "EMPTY") -> int:
     """
@@ -19,6 +21,7 @@ async def synthesize_with_openai(text: str,
         model (str): Name of the TTS model to use
         openai_api_base (str): Base URL of the OpenAI-compatible API server
         output_path (str): Where to write the generated audio file
+        language (str | None): Language hint, e.g. "Vietnamese" or "English" (default: auto-detect)
         response_format (str): Audio container format: wav, pcm, flac, mp3, opus (default: "wav")
         api_key (str): API key for the server (default: "EMPTY")
 
@@ -33,10 +36,12 @@ async def synthesize_with_openai(text: str,
         response = await client.audio.speech.create(
             model = model,
             input = text,
-            # VoxCPM2 has no predefined voices: the field is required by the
-            # OpenAI schema but ignored by the model (use ref_audio to clone)
-            voice = "default",
+            # OmniVoice has no built-in speakers: omit `voice` for an auto voice,
+            # or pass ref_audio/ref_text to clone one (see voice_cloning_example.py)
+            voice = openai.NOT_GIVEN,
             response_format = response_format,
+            # vLLM-Omni extension: optional language hint for the model
+            extra_body = {"language": language} if language else None,
         )
         # Read the full audio payload into memory
         audio_bytes = response.content
@@ -50,6 +55,7 @@ async def synthesize_with_httpx(text: str,
                                 model: str,
                                 openai_api_base: str,
                                 output_path: str,
+                                language: str | None = None,
                                 response_format: str = "wav",
                                 timeout: float = 300.0) -> int:
     """
@@ -60,6 +66,7 @@ async def synthesize_with_httpx(text: str,
         model (str): Name of the TTS model to use
         openai_api_base (str): Base URL of the OpenAI-compatible API server
         output_path (str): Where to write the generated audio file
+        language (str | None): Language hint, e.g. "Vietnamese" or "English" (default: auto-detect)
         response_format (str): Audio container format: wav, pcm, flac, mp3, opus (default: "wav")
         timeout (float): Maximum time in seconds to wait for the response (default: 300.0)
 
@@ -75,9 +82,11 @@ async def synthesize_with_httpx(text: str,
     payload = {
         "model": model,                       # Specify the model to use
         "input": text,                        # Text to synthesize
-        "voice": "default",                   # Placeholder, ignored by VoxCPM2
         "response_format": response_format,   # Audio container format
     }
+    # Optional language hint; OmniVoice auto-detects when omitted
+    if language:
+        payload["language"] = language
 
     # Reuse a single async client so the connection is closed deterministically
     async with httpx.AsyncClient(timeout = timeout) as client:
@@ -97,7 +106,8 @@ async def run_synthesizer(label: str,
                           text: str,
                           model: str,
                           openai_api_base: str,
-                          output_path: str):
+                          output_path: str,
+                          language: str | None = None):
     """
     Await a single async synthesis client and report its result and timing.
 
@@ -108,6 +118,7 @@ async def run_synthesizer(label: str,
         model (str): Name of the TTS model to use
         openai_api_base (str): Base URL of the OpenAI-compatible API server
         output_path (str): Where to write the generated audio file
+        language (str | None): Language hint passed through to the server (default: None)
 
     Returns:
         None: Prints synthesis results to stdout
@@ -121,7 +132,8 @@ async def run_synthesizer(label: str,
         num_bytes = await synthesize(text = text,
                                      model = model,
                                      openai_api_base = openai_api_base,
-                                     output_path = output_path)
+                                     output_path = output_path,
+                                     language = language)
 
         # Calculate processing time
         processing_time = time.perf_counter() - start_time
@@ -146,7 +158,9 @@ async def main():
     # Text to synthesize
     text = "Xin chào, đây là VoicePlatform. Chúc bạn một ngày tốt lành."
     # Model name for speech synthesis
-    model_name = "openbmb/VoxCPM2"
+    model_name = "kjanh/KhanhTTS-OmniVoice"
+    # Language hint for the model (set to None to auto-detect)
+    language = "Vietnamese"
 
     # Map each client label to its corresponding async synthesis function and output file
     synthesizers = {
@@ -163,7 +177,8 @@ async def main():
                         text = text,
                         model = model_name,
                         openai_api_base = openai_api_base,
-                        output_path = output_path)
+                        output_path = output_path,
+                        language = language)
         for label, (synthesize, output_path) in synthesizers.items()
     ])
 

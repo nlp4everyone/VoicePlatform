@@ -1,81 +1,102 @@
 from openai import AsyncOpenAI
-import asyncio
+import asyncio, os, time, wave
 
-async def stream_openai_response(client: AsyncOpenAI,
-                                 audio_path: str,
-                                 model: str,
-                                 language :str = "en",
-                                 temperature :float = 0.0,
-                                 seed :int = 420,
-                                 top_p :float = 0.6):
+# Directory where generated audio files are written
+RESULTS_DIR = "results"
+
+# VoxCPM2 emits 16-bit mono PCM at 48 kHz
+SAMPLE_RATE = 48000
+NUM_CHANNELS = 1
+SAMPLE_WIDTH = 2
+
+async def stream_speech(text: str,
+                        model: str,
+                        openai_api_base: str,
+                        output_path: str,
+                        api_key: str = "EMPTY",
+                        chunk_size: int = 8192):
     """
-    Perform asynchronous transcription using OpenAI-compatible API.
-    
+    Perform streaming speech synthesis using the async OpenAI client and write
+    raw PCM chunks to a WAV file as soon as they arrive.
+
     Args:
-        client (AsyncOpenAI): Async OpenAI client instance
-        audio_path (str): Path to the audio file to transcribe
-        model (str): Name of the model to use for transcription
-        language (str): Language code for transcription (default: "en")
-        temperature (float): Sampling temperature for transcription (default: 0.0)
-        seed (int): Random seed for reproducible results (default: 420)
-        top_p (float): Nucleus sampling parameter (default: 0.6)
-    
+        text (str): Text to synthesize
+        model (str): Name of the TTS model to use
+        openai_api_base (str): Base URL of the OpenAI-compatible API server
+        output_path (str): Where to write the generated WAV file
+        api_key (str): API key for the server (default: "EMPTY")
+        chunk_size (int): Size of chunks to read from the streaming response (default: 8192)
+
     Returns:
-        None: Prints transcription results to stdout as they stream in
+        None: Prints streaming progress to stdout
     """
-    # Print header for streaming output
-    print("\ntranscription result [stream]:", end=" ")
-    # Open the audio file in binary mode for transcription
-    with open(audio_path, "rb") as f:
-        # Create asynchronous transcription request with streaming enabled
-        transcription = await client.audio.transcriptions.create(
-            file=f,
-            model=model,
-            language=language,
-            response_format="json",
-            temperature=temperature,
-            # Additional sampling params not provided by OpenAI API.
-            extra_body=dict(seed=seed,
-                            top_p=top_p),
-            stream=True,
-        )
-        # Process the streaming response asynchronously
-        async for chunk in transcription:
-            if chunk.choices:
-                # Extract the transcribed content from the chunk
-                content = chunk.choices[0].get("delta", {}).get("content")
-                # Print the transcribed text immediately without newline
-                print(content, end="", flush=True)
 
-    # Print final newline after streaming completes
-    print()
+    # Initialize the async OpenAI client with local server configuration
+    async with AsyncOpenAI(base_url = openai_api_base,
+                           api_key = api_key) as client:
+        # Record start time so we can measure time-to-first-audio
+        start_time = time.perf_counter()
+        first_chunk_time = None
+        total_bytes = 0
 
+        # Open the output WAV; the `wave` module writes a correct header on close
+        with wave.open(output_path, "wb") as wav:
+            wav.setnchannels(NUM_CHANNELS)
+            wav.setsampwidth(SAMPLE_WIDTH)
+            wav.setframerate(SAMPLE_RATE)
 
-def main():
+            # Ask the server for raw PCM bytes streamed as they are decoded
+            async with client.audio.speech.with_streaming_response.create(
+                model = model,
+                input = text,
+                voice = "default",              # Placeholder, ignored by VoxCPM2
+                response_format = "pcm",        # Raw streaming supports pcm/wav only
+                # vLLM-Omni extension: stream raw audio bytes instead of SSE events
+                extra_body = {"stream_format": "audio"},
+            ) as response:
+                # Consume the response body chunk by chunk
+                async for chunk in response.iter_bytes(chunk_size):
+                    if first_chunk_time is None:
+                        first_chunk_time = time.perf_counter() - start_time
+                        print(f"First audio chunk after {first_chunk_time:.2f} seconds")
+                    # Append the PCM samples to the WAV file immediately
+                    wav.writeframes(chunk)
+                    total_bytes += len(chunk)
+                    # Show progress without newline
+                    print(".", end="", flush=True)
+
+        # Print streaming results and processing metrics
+        processing_time = time.perf_counter() - start_time
+        duration = total_bytes / (SAMPLE_RATE * NUM_CHANNELS * SAMPLE_WIDTH)
+        print(f"\n=== Streaming Speech Synthesis Results [async] ===")
+        print(f"Output File: {output_path} ({total_bytes:,} bytes, {duration:.2f} s of audio)")
+        print(f"Processing Time: {processing_time:.2f} seconds")
+        print("=" * 35)
+
+async def main():
     """
-    Main function to demonstrate asynchronous streaming audio transcription.
-    Sets up the AsyncOpenAI client and initiates async streaming transcription.
+    Main coroutine to demonstrate asynchronous streaming speech synthesis.
+    Sets up the AsyncOpenAI client and initiates raw audio streaming.
     """
-    # Configure API connection parameters for vLLM server
-    # Note: vLLM uses "EMPTY" as a placeholder API key when not requiring authentication
-    openai_api_key = "EMPTY"
     # Default vLLM server endpoint (adjust if your server runs on different port/host)
-    openai_api_base = "http://localhost:8001/v1"
-    # Path to the audio file for transcription
-    audio_path = "resources/sample_vi.mp3"
-    # Get the first available model from the server
-    model_name = "Qwen/Qwen3-ASR-1.7B"
+    openai_api_base = "http://localhost:8002/v1"
+    # Text to synthesize
+    text = "Xin chào, đây là VoicePlatform. Âm thanh được phát trực tiếp trong lúc mô hình đang tạo."
+    # Model name for speech synthesis
+    model_name = "openbmb/VoxCPM2"
+    # Where to write the generated audio
+    output_path = os.path.join(RESULTS_DIR, "output_async_stream.wav")
+    # Make sure the results directory exists before writing into it
+    os.makedirs(RESULTS_DIR, exist_ok = True)
 
-    # Initialize asynchronous OpenAI client with custom base URL and empty API key
-    client = AsyncOpenAI(api_key=openai_api_key,
-                         base_url=openai_api_base)
-    # Get the model
     print(f"Using model: {model_name}")
-    # Run the async streaming function
-    asyncio.run(stream_openai_response(client = client,
-                                       audio_path = audio_path,
-                                       model = model_name))
 
-# Entry point: Run the main function when script is executed directly
+    # Start streaming speech synthesis
+    await stream_speech(text = text,
+                        model = model_name,
+                        openai_api_base = openai_api_base,
+                        output_path = output_path)
+
+# Entry point: Run the main coroutine when script is executed directly
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -1,21 +1,29 @@
 services:
   qwen-asr:
-    image: vllm/vllm-openai:v0.24.0
+    build: .
+    image: qwen-asr:v0.24.0
     container_name: qwen-asr-serve
-    entrypoint: ["/bin/bash", "-c"]
-    command: >
-      "pip install vllm[audio] && 
-      vllm serve ${MODEL_NAME:-Qwen/Qwen3-ASR-1.7B}
-      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.6}
-      --host ${VLLM_HOST:-0.0.0.0}
-      --port ${VLLM_PORT:-8001}
-      --download-dir ${DOWNLOAD_DIR:-/root/.cache/huggingface/hub}
-      --max-model-len ${MAX_MODEL_LEN:-8192}
-      --max-num-seqs ${MAX_NUM_SEQS:-4}"
+    command:
+      - ${MODEL_NAME:-Qwen/Qwen3-ASR-1.7B}
+      - --gpu-memory-utilization=${GPU_MEMORY_UTILIZATION:-0.8}
+      - --host=${VLLM_HOST:-0.0.0.0}
+      - --port=${VLLM_PORT:-8001}
+      - --download-dir=${DOWNLOAD_DIR:-/root/.cache/huggingface/hub}
+      - --max-model-len=${MAX_MODEL_LEN:-8192}
+      - --max-num-seqs=${MAX_NUM_SEQS:-4}
     ports:
-      - "${VLLM_PORT:-8001}:8001"
+      - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
     volumes:
       - vllm-cache:${DOWNLOAD_DIR:-/root/.cache/huggingface/hub}
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${VLLM_PORT:-8001}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    environment:
+      - TRANSFORMERS_VERBOSITY=error
     deploy:
       resources:
         reservations:

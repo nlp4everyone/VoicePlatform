@@ -68,25 +68,30 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 
 3. **Set up environment configuration**
    ```bash
-   # Copy the sample environment file
-   cp .env.sample .env
+   # Create .env from .env.sample (skipped if .env already exists)
+   make env
    # Edit the .env file to customize settings
    # nano .env  # or use your preferred text editor
    ```
 
 4. **Build and start the service**
    ```bash
-   # Build and start the ASR service (requires sudo for Docker)
-   bash run_service.sh
+   # Build the image (audio deps are installed once) and start in the background
+   make up
+   # Or run in the foreground
+   make start
    ```
+   Docker is invoked with `sudo` by default. Override with `make up DOCKER=docker` if your user is in the `docker` group.
 
 5. **Verify the service is running**
    ```bash
-   # Check if the service is responding
-   curl http://localhost:8001/v1/models
+   # Check the health endpoint
+   make health
    # View service logs
-   sudo docker compose logs -f qwen-asr
+   make logs
    ```
+
+   Other useful targets: `make down`, `make restart`, `make ps`, `make clean` (also removes the model cache). Run `make help` for the full list.
 
 6. **Access the service**
    - 🔌 **API Endpoint**: http://localhost:8001/v1 - OpenAI-compatible API

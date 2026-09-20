@@ -1,6 +1,6 @@
 # 🎤 VoicePlatform - Private Text-to-Speech Service
 
-A high-performance, privacy-focused text-to-speech (TTS) service powered by OpenBMB's VoxCPM2 model. This project provides a secure, local deployment solution for synthesizing speech from text without relying on cloud services, ensuring complete data privacy and control.
+A high-performance, privacy-focused text-to-speech (TTS) service powered by [KhanhTTS-OmniVoice](https://huggingface.co/kjanh/KhanhTTS-OmniVoice), a Vietnamese + English model fine-tuned from k2-fsa/OmniVoice. This project provides a secure, local deployment solution for synthesizing speech from text without relying on cloud services, ensuring complete data privacy and control.
 
 Built with vLLM-Omni for optimal performance and GPU acceleration, this service offers OpenAI-compatible API endpoints for seamless integration with existing applications and workflows.
 
@@ -9,16 +9,16 @@ Built with vLLM-Omni for optimal performance and GPU acceleration, this service 
 # 🧠 Core Features
 
 ### 🎯 Advanced TTS Capabilities
-- Natural, expressive speech synthesis using the state-of-the-art VoxCPM2 model
-- Support for multiple languages
+- Natural Vietnamese and English speech synthesis with KhanhTTS-OmniVoice
+- Zero-shot voice cloning from a short reference recording (`ref_audio` + `ref_text`)
 - OpenAI-compatible `/v1/audio/speech` API for easy integration with existing tools
-- FP8 quantization out of the box for lower VRAM usage
+- Lightweight ~0.6B diffusion model that fits comfortably on consumer GPUs
 
 ### 🚀 Performance Optimizations
-- GPU-accelerated inference with vLLM-Omni for real-time synthesis
-- Configurable GPU memory utilization, KV cache budget and model parameters
-- Efficient batch processing of concurrent requests
-- Optimized for low-latency speech generation workflows
+- GPU-accelerated inference with vLLM-Omni
+- Configurable GPU memory utilization
+- Efficient handling of concurrent requests
+- Sentence-level parallel synthesis for low time-to-first-audio
 
 ### 🔒 Privacy & Security
 - Complete local deployment - no data leaves your infrastructure
@@ -63,7 +63,7 @@ Built with vLLM-Omni for optimal performance and GPU acceleration, this service 
    ```bash
    # Fetch the latest changes and checkout the correct branch
    git fetch
-   git checkout vllm_omni/voxcpm
+   git checkout vllm_omni/khanhtts-omnivoice
    ```
 
 3. **Set up environment configuration**
@@ -74,9 +74,9 @@ Built with vLLM-Omni for optimal performance and GPU acceleration, this service 
    # nano .env  # or use your preferred text editor
    ```
 
-4. **Build and start the service**
+4. **Start the service**
    ```bash
-   # Build the image (VoxCPM deps are installed once) and start in the background
+   # Pull the vllm-omni image and start the service in the background
    make up
    # Or run in the foreground
    make start
@@ -128,33 +128,19 @@ The `examples/voice_cloning_example.py` demonstrates:
 python examples/voice_cloning_example.py
 ```
 
-## 🌊 Streaming Synthesis
+## 🌊 Sentence-level Streaming
 
-### 🔄 Asynchronous Streaming (raw audio)
-
-The `examples/async_streaming_example.py` demonstrates:
-- 🔄 **Streaming** raw PCM bytes with the async OpenAI client (`stream_format="audio"`)
-- ⏱️ **Time-to-first-audio** measurement
-- 💾 **Writing** chunks straight into a WAV file as they arrive
+OmniVoice is a diffusion TTS model, so vLLM-Omni returns each request as one complete clip (`stream` / `stream_format` are ignored). The `examples/sentence_streaming_example.py` gets streaming-like latency anyway by:
+- ✂️ **Splitting** the paragraph into sentences
+- 🔀 **Synthesizing** them concurrently with a bounded number of in-flight requests
+- 💾 **Appending** each clip to the output WAV in order as soon as it is ready, reporting time-to-first-audio
 
 ```bash
-# Run the async streaming example
-python examples/async_streaming_example.py
+# Run the sentence-level streaming example
+python examples/sentence_streaming_example.py
 ```
 
-### 🔄 Synchronous Streaming (SSE)
-
-The `examples/sync_streaming_example.py` shows:
-- 📡 **Server-Sent Events** handling (`speech.audio.delta` / `speech.audio.done`)
-- 🔐 **Decoding** base64 PCM deltas into a WAV file
-- 🔗 **Direct API** integration with `requests`, no OpenAI SDK
-
-```bash
-# Run the sync streaming example
-python examples/sync_streaming_example.py
-```
-
-> ℹ️ Streaming only supports `response_format` of `pcm` or `wav`; VoxCPM2 outputs 16-bit mono at 48 kHz.
+> ℹ️ OmniVoice has no built-in speakers: omit `voice` for an automatic voice, or pass `ref_audio` (+ `ref_text`) to clone one. A `language` hint such as `"Vietnamese"` or `"English"` is optional. Output is 24 kHz mono.
 
 ## 🎵 Sample Audio Files
 
@@ -170,12 +156,9 @@ Customize the service behavior using these environment variables in your `.env` 
 
 ```bash
 # 🎯 Model configuration
-MODEL_NAME=openbmb/VoxCPM2              # TTS model to use (configurable)
-GPU_MEMORY_UTILIZATION=0.75             # GPU memory allocation (0.0-1.0)
-MAX_MODEL_LEN=2048                      # Maximum model context length
-MAX_NUM_SEQS=4                          # Maximum concurrent sequences
-QUANTIZATION=fp8                        # Weight quantization (fp8 by default)
-KV_CACHE_BYTES=2147483648               # KV cache budget for stage 0 in bytes (2 GiB)
+MODEL_NAME=kjanh/KhanhTTS-OmniVoice     # TTS model to use (configurable)
+GPU_MEMORY_UTILIZATION=0.5              # GPU memory allocation (0.0-1.0)
+HF_TOKEN=                               # Optional; only if you hit Hugging Face rate limits
 
 # 🌐 Network configuration
 VLLM_HOST=0.0.0.0                       # Service host address
@@ -185,19 +168,19 @@ VLLM_PORT=8002                          # Host port (container always listens on
 HF_CACHE_DIR=~/.cache/huggingface/hub      # Host directory mounted as the model cache
 ```
 
-> ✅ These defaults were tested on an **NVIDIA RTX 3060**. On GPUs with more VRAM you can raise `GPU_MEMORY_UTILIZATION`, `KV_CACHE_BYTES` and `MAX_NUM_SEQS`, or drop `QUANTIZATION=fp8`.
+> ✅ These defaults were tested on an **NVIDIA RTX 3060**. The model is small (~0.6B), so `GPU_MEMORY_UTILIZATION` mostly controls how much VRAM is left for other workloads on the same GPU.
 
 <br />
 
 # 📋 To-Do List
 - [x] 🚀 Basic TTS service deployment
-- [x] 📝 Example requests
-- [ ] 🎙️ Voice cloning examples
+- [x] 📝 Example requests (non-streaming and sentence-level streaming)
+- [x] 🎙️ Voice cloning example
 
 <br />
 
 # 💻 Technology Stack:
-- 🎯 **TTS Model**: Configurable (default: openbmb/VoxCPM2)
+- 🎯 **TTS Model**: Configurable (default: kjanh/KhanhTTS-OmniVoice)
 - ⚡ **Inference Engine**: vLLM-Omni
 - 🐳 **Containerization**: Docker & Docker Compose
 - 🔌 **API Compatibility**: OpenAI API format
@@ -209,5 +192,6 @@ HF_CACHE_DIR=~/.cache/huggingface/hub      # Host directory mounted as the model
 
 # 🙏 Acknowledgments
 - 🚀 [vLLM Team](https://github.com/vllm-project/vllm-omni) for the high-performance omni-modal inference engine
-- 🤖 [OpenBMB Team](https://github.com/OpenBMB/VoxCPM) for the VoxCPM2 TTS model
+- 🤖 [kjanh](https://huggingface.co/kjanh/KhanhTTS-OmniVoice) for the KhanhTTS-OmniVoice Vietnamese fine-tune
+- 🎙️ [k2-fsa Team](https://github.com/k2-fsa/OmniVoice) for the OmniVoice base model
 

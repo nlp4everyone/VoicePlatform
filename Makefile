@@ -2,13 +2,13 @@
 
 DOCKER  ?= sudo docker
 COMPOSE  = $(DOCKER) compose
-SERVICE  = qwen-asr
+SERVICE  = voxcpm2-tts
 
 # Load variables from .env so targets can use them (e.g. VLLM_PORT in `health`).
 -include .env
 export
 
-VLLM_PORT ?= 8001
+VLLM_PORT ?= 8002
 
 .PHONY: help env build up start down restart logs ps health clean
 
@@ -28,7 +28,7 @@ build: env ## Build the service image (audio deps are baked in once)
 
 up: env ## Build if needed and start the service in the background
 	$(COMPOSE) up -d --build
-	@echo "Qwen ASR service is starting at http://localhost:$(VLLM_PORT)"
+	@echo "VoxCPM2 TTS service is starting at http://localhost:$(VLLM_PORT)"
 	@echo "Follow logs with: make logs"
 
 start: env ## Start the service in the foreground
@@ -48,5 +48,5 @@ ps: ## Show service status
 health: ## Check the service health endpoint
 	@curl -sf http://localhost:$(VLLM_PORT)/health && echo "OK" || (echo "Service is not healthy" && exit 1)
 
-clean: ## Stop the service and remove the model cache volume
-	$(COMPOSE) down -v
+clean: ## Stop the service and remove its containers, networks and images
+	$(COMPOSE) down --rmi local

@@ -1,38 +1,44 @@
 services:
-  voxcpm2-tts:
-    build: .
-    image: voxcpm2-tts:v0.26.0
-    container_name: voxcpm2-tts-serve
+  omnivoice:
+    image: vllm/vllm-omni:v0.26.0
+    container_name: khanhtts-omnivoice
+    # The vllm-omni CUDA image ships with no default entrypoint, so the
+    # full "vllm serve ... --omni" command must be given explicitly.
     command: >
-      vllm serve ${MODEL_NAME:-openbmb/VoxCPM2}
+      vllm serve ${MODEL_NAME:-kjanh/KhanhTTS-OmniVoice}
       --omni
       --trust-remote-code
-      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.75}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85}
       --host ${VLLM_HOST:-0.0.0.0}
       --port 8002
       --download-dir /root/.cache/huggingface/hub
-      --max-model-len ${MAX_MODEL_LEN:-2048}
-      --max-num-seqs ${MAX_NUM_SEQS:-4}
-      --quantization ${QUANTIZATION:-fp8}
-      --stage-overrides '{"0": {"kv_cache_memory_bytes": ${KV_CACHE_BYTES:-2147483648}, "max_model_len": ${MAX_MODEL_LEN:-2048}, "max_num_seqs": ${MAX_NUM_SEQS:-4}}}'
     environment:
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      # kjanh/KhanhTTS-OmniVoice is public (not gated), so HF_TOKEN is
+      # optional. Set it if you hit download rate limits.
+      - HF_TOKEN=${HF_TOKEN:-}
     ports:
       - "${VLLM_PORT:-8002}:8002"
     volumes:
-      - ${HF_CACHE_DIR:-~/.cache/huggingface/hub}:/root/.cache/huggingface/hub
-    ipc: host
+      - ${HF_CACHE_DIR:-${HOME}/.cache/huggingface/hub}:/root/.cache/huggingface/hub
+    ipc: host   # vLLM needs shared memory for its worker processes
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
+      timeout: 5s
+      retries: 3
+      start_period: 120s   # first boot downloads ~0.6B of model weights
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # --- GPU access (requires nvidia-container-toolkit on the host) ---
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1              # set to "all" to expose every GPU
               capabilities: [gpu]
     restart: unless-stopped

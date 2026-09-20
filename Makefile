@@ -2,7 +2,7 @@
 
 DOCKER  ?= sudo docker
 COMPOSE  = $(DOCKER) compose
-SERVICE  = voxcpm2-tts
+SERVICE  = omnivoice
 
 # Load variables from .env so targets can use them (e.g. VLLM_PORT in `health`).
 -include .env
@@ -28,7 +28,7 @@ build: env ## Build the service image (audio deps are baked in once)
 
 up: env ## Build if needed and start the service in the background
 	$(COMPOSE) up -d --build
-	@echo "VoxCPM2 TTS service is starting at http://localhost:$(VLLM_PORT)"
+	@echo "KhanhTTS-OmniVoice service is starting at http://localhost:$(VLLM_PORT)"
 	@echo "Follow logs with: make logs"
 
 start: env ## Start the service in the foreground

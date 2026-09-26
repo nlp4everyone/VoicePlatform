@@ -1,5 +1,6 @@
 from openai import OpenAI
 import json, os, requests
+from dotenv import load_dotenv
 
 def stream_api_response(audio_path: str,
                         model: str,
@@ -72,12 +73,15 @@ def main():
     Main function to demonstrate streaming audio transcription.
     Sets up the OpenAI client and initiates streaming transcription.
     """
+    # Read MODEL_NAME from the project's .env (searched upwards from this file)
+    load_dotenv()
+
     # Default vLLM server endpoint (adjust if your server runs on different port/host)
     openai_api_base = "http://localhost:8001/v1"
     # Path to the audio file for transcription
     audio_path = "resources/sample_vi.mp3"
-    # Get the first available model from the server
-    model_name = "Qwen/Qwen3-ASR-1.7B"
+    # Model served by vLLM, matching MODEL_NAME in .env
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen3-ASR-1.7B")
 
     # Get the first available model from the server
     print(f"Using model: {model_name}")

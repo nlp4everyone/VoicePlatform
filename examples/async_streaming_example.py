@@ -1,5 +1,6 @@
 from openai import AsyncOpenAI
-import asyncio
+import asyncio, os
+from dotenv import load_dotenv
 
 async def stream_openai_response(client: AsyncOpenAI,
                                  audio_path: str,
@@ -27,8 +28,10 @@ async def stream_openai_response(client: AsyncOpenAI,
     print("\ntranscription result [stream]:", end=" ")
     # Open the audio file in binary mode for transcription
     with open(audio_path, "rb") as f:
-        # Create asynchronous transcription request with streaming enabled
-        transcription = await client.audio.transcriptions.create(
+        # `async with` closes the SSE stream deterministically. Leaving it to garbage
+        # collection intermittently raises "generator didn't stop after athrow()" from
+        # inside httpcore during teardown.
+        async with await client.audio.transcriptions.create(
             file=f,
             model=model,
             language=language,
@@ -38,14 +41,14 @@ async def stream_openai_response(client: AsyncOpenAI,
             extra_body=dict(seed=seed,
                             top_p=top_p),
             stream=True,
-        )
-        # Process the streaming response asynchronously
-        async for chunk in transcription:
-            if chunk.choices:
-                # Extract the transcribed content from the chunk
-                content = chunk.choices[0].get("delta", {}).get("content")
-                # Print the transcribed text immediately without newline
-                print(content, end="", flush=True)
+        ) as transcription:
+            # Process the streaming response asynchronously
+            async for chunk in transcription:
+                if chunk.choices:
+                    # Extract the transcribed content from the chunk
+                    content = chunk.choices[0].get("delta", {}).get("content")
+                    # Print the transcribed text immediately without newline
+                    print(content, end="", flush=True)
 
     # Print final newline after streaming completes
     print()
@@ -56,6 +59,9 @@ def main():
     Main function to demonstrate asynchronous streaming audio transcription.
     Sets up the AsyncOpenAI client and initiates async streaming transcription.
     """
+    # Read MODEL_NAME from the project's .env (searched upwards from this file)
+    load_dotenv()
+
     # Configure API connection parameters for vLLM server
     # Note: vLLM uses "EMPTY" as a placeholder API key when not requiring authentication
     openai_api_key = "EMPTY"
@@ -63,8 +69,8 @@ def main():
     openai_api_base = "http://localhost:8001/v1"
     # Path to the audio file for transcription
     audio_path = "resources/sample_vi.mp3"
-    # Get the first available model from the server
-    model_name = "Qwen/Qwen3-ASR-1.7B"
+    # Model served by vLLM, matching MODEL_NAME in .env
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen3-ASR-1.7B")
 
     # Initialize asynchronous OpenAI client with custom base URL and empty API key
     client = AsyncOpenAI(api_key=openai_api_key,

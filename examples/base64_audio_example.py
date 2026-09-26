@@ -1,12 +1,16 @@
-import base64, time
+import base64, os, time
 import requests
+from dotenv import load_dotenv
+
+# Read MODEL_NAME from the project's .env (searched upwards from this file)
+load_dotenv()
 
 # API endpoint for chat completions
 url = "http://localhost:8001/v1/chat/completions"
 # Path to the audio file for transcription
 audio_path = "resources/sample_vi.mp3"
-# Model name for audio transcription
-model_name = "Qwen/Qwen3-ASR-1.7B"
+# Model served by vLLM, matching MODEL_NAME in .env
+model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen3-ASR-1.7B")
 
 def encode_audio(path):
     """

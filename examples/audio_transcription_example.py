@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
 import asyncio, os, time
 import httpx
+from dotenv import load_dotenv
 
 async def transcribe_with_openai(audio_path: str,
                                  model: str,
@@ -130,12 +131,15 @@ async def main():
     Main coroutine to demonstrate asynchronous audio transcription through two
     different clients: the OpenAI SDK and the `httpx` library.
     """
+    # Read MODEL_NAME from the project's .env (searched upwards from this file)
+    load_dotenv()
+
     # Default vLLM server endpoint (adjust if your server runs on different port/host)
     openai_api_base = "http://localhost:8001/v1"
     # Path to the audio file for transcription
     audio_path = "resources/sample_vi.mp3"
-    # Model name for audio transcription
-    model_name = "Qwen/Qwen3-ASR-1.7B"
+    # Model served by vLLM, matching MODEL_NAME in .env
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen3-ASR-1.7B")
     # Language code of the audio content
     language = "vi"
 

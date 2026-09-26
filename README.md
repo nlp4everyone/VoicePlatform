@@ -102,6 +102,10 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 
 # 📝 Examples
 
+All examples read the model name from `MODEL_NAME` in your `.env` (falling back to
+`Qwen/Qwen3-ASR-1.7B`), so they stay in sync with the served model. This needs
+`pip install python-dotenv`. Run them from the project root, since the audio path is relative.
+
 ## 🎵 Audio File Transcription
 
 Check out the `examples/audio_transcription_example.py` file to see how to:
@@ -150,6 +154,30 @@ The `examples/sync_streaming_example.py` shows:
 ```bash
 # Run the sync streaming example
 python examples/sync_streaming_example.py
+```
+
+### 🔌 WebSocket Realtime Streaming
+
+The `examples/websocket_streaming_example.py` demonstrates:
+- 🔌 **Connecting** to vLLM's Realtime API over WebSocket (`/v1/realtime`), distinct from the REST/SSE endpoint used above
+- 🎙️ **Converting** audio to PCM16 @ 16kHz and streaming it to the server in chunks
+- 📥 **Receiving** `transcription.delta` / `transcription.done` events as they arrive
+
+Requires extra client-side dependencies: `pip install websockets librosa numpy python-dotenv`
+
+```bash
+# Run the websocket streaming example
+python examples/websocket_streaming_example.py
+```
+
+An alternative version, `examples/websocket_openai_sdk_example.py`, uses the OpenAI SDK's
+`realtime.connect()` helper for the connection/auth handshake instead of the raw `websockets`
+library (still sending/receiving vLLM's own event JSON directly, since vLLM's realtime events
+aren't part of OpenAI's official Realtime API schema). Requires `pip install "openai[realtime]" librosa numpy python-dotenv`.
+
+```bash
+# Run the OpenAI SDK-based websocket example
+python examples/websocket_openai_sdk_example.py
 ```
 
 ## 🎵 Sample Audio File

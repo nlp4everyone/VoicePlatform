@@ -11,6 +11,9 @@ services:
       - --download-dir=${DOWNLOAD_DIR:-/root/.cache/huggingface/hub}
       - --max-model-len=${MAX_MODEL_LEN:-8192}
       - --max-num-seqs=${MAX_NUM_SEQS:-4}
+      # Qwen3-ASR's realtime architecture is not auto-detected from config.json; without
+      # this override the /v1/realtime WebSocket route is never mounted (handshake -> 403).
+      - '--hf-overrides={"architectures":["Qwen3ASRRealtimeGeneration"]}'
     ports:
       - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
     volumes:

@@ -1,33 +1,48 @@
 services:
-  voxcpm2-tts:
+  # One-shot job: Fun-ASR-MLT-Nano-2512 only ships a native FunASR checkpoint, so convert it
+  # into a vLLM model directory (skipped once ./models already holds the converted model)
+  fun-asr-convert:
     build: .
-    image: voxcpm2-tts:v0.26.0
-    container_name: voxcpm2-tts-serve
-    command: >
-      vllm serve ${MODEL_NAME:-openbmb/VoxCPM2}
-      --omni
-      --trust-remote-code
-      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.75}
-      --host ${VLLM_HOST:-0.0.0.0}
-      --port 8002
-      --download-dir /root/.cache/huggingface/hub
-      --max-model-len ${MAX_MODEL_LEN:-2048}
-      --max-num-seqs ${MAX_NUM_SEQS:-4}
-      --quantization ${QUANTIZATION:-fp8}
-      --stage-overrides '{"0": {"kv_cache_memory_bytes": ${KV_CACHE_BYTES:-2147483648}, "max_model_len": ${MAX_MODEL_LEN:-2048}, "max_num_seqs": ${MAX_NUM_SEQS:-4}}}'
+    image: fun-asr-vllm:audio
+    entrypoint: ["python3", "/scripts/convert_mlt_to_vllm.py", "/models/Fun-ASR-MLT-Nano-2512-vllm"]
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./models:/models
+      - ${HF_CACHE_DIR:-~/.cache/huggingface/hub}:/root/.cache/huggingface/hub
     environment:
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - HF_HOME=/root/.cache/huggingface
+
+  fun-asr-mlt:
+    image: fun-asr-vllm:audio
+    container_name: fun-asr-mlt-nano
+    depends_on:
+      fun-asr-convert:
+        condition: service_completed_successfully
+    command:
+      - "/models/Fun-ASR-MLT-Nano-2512-vllm"
+      - "--served-model-name"
+      - "fun-asr-mlt-nano"
+      # float32 is the precision FunAudioLLM validated for transcription fidelity
+      - "--dtype"
+      - "float32"
+      - "--gpu-memory-utilization"
+      - "0.7"
+      - "--max-model-len"
+      - "4096"
+      - "--enforce-eager"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8002"
     ports:
       - "${VLLM_PORT:-8002}:8002"
     volumes:
-      - ${HF_CACHE_DIR:-~/.cache/huggingface/hub}:/root/.cache/huggingface/hub
-    ipc: host
+      - ./models:/models:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
+      test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 300s
     deploy:
       resources:
         reservations:

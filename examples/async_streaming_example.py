@@ -1,102 +1,85 @@
-from openai import AsyncOpenAI
-import asyncio, os, time, wave
+import asyncio, json, os
+import httpx
 
-# Directory where generated audio files are written
-RESULTS_DIR = "results"
+# vLLM streams transcriptions over Server-Sent Events: POST the file to the OpenAI-compatible
+# endpoint (`/v1/audio/transcriptions`) with `stream=true`, and the server replies with
+# `data: {...}` lines, each carrying the next piece of text in `choices[0].delta.content`,
+# followed by `data: [DONE]`. The audio is uploaded in full first; only the text streams.
+# Requires: pip install httpx
 
-# VoxCPM2 emits 16-bit mono PCM at 48 kHz
-SAMPLE_RATE = 48000
-NUM_CHANNELS = 1
-SAMPLE_WIDTH = 2
-
-async def stream_speech(text: str,
-                        model: str,
-                        openai_api_base: str,
-                        output_path: str,
-                        api_key: str = "EMPTY",
-                        chunk_size: int = 8192):
+async def stream_asr_response(api_url: str,
+                              audio_path: str,
+                              model: str,
+                              language: str = "vi",
+                              api_key: str = "EMPTY",
+                              timeout: float = 300.0):
     """
-    Perform streaming speech synthesis using the async OpenAI client and write
-    raw PCM chunks to a WAV file as soon as they arrive.
+    Perform asynchronous streaming transcription over the vLLM transcription API.
 
     Args:
-        text (str): Text to synthesize
-        model (str): Name of the TTS model to use
-        openai_api_base (str): Base URL of the OpenAI-compatible API server
-        output_path (str): Where to write the generated WAV file
-        api_key (str): API key for the server (default: "EMPTY")
-        chunk_size (int): Size of chunks to read from the streaming response (default: 8192)
+        api_url (str): URL of the `/v1/audio/transcriptions` endpoint
+        audio_path (str): Path to the audio file to transcribe
+        model (str): Served model name (must match the server's --served-model-name)
+        language (str): Language code of the audio content (default: "vi")
+        api_key (str): API key of the server, or a placeholder when auth is disabled (default: "EMPTY")
+        timeout (float): Maximum time in seconds to wait for the response (default: 300.0)
 
     Returns:
-        None: Prints streaming progress to stdout
+        None: Prints transcription results to stdout as they stream in
     """
+    headers = {"Authorization": f"Bearer {api_key}"}
+    data = {
+        "model": model,
+        "language": language,
+        "temperature": "0",
+        "stream": "true",
+    }
 
-    # Initialize the async OpenAI client with local server configuration
-    async with AsyncOpenAI(base_url = openai_api_base,
-                           api_key = api_key) as client:
-        # Record start time so we can measure time-to-first-audio
-        start_time = time.perf_counter()
-        first_chunk_time = None
-        total_bytes = 0
+    async with httpx.AsyncClient(timeout = timeout) as client:
+        with open(audio_path, "rb") as f:
+            files = {"file": (os.path.basename(audio_path), f)}
+            async with client.stream("POST", api_url,
+                                     headers = headers,
+                                     files = files,
+                                     data = data) as response:
+                response.raise_for_status()
 
-        # Open the output WAV; the `wave` module writes a correct header on close
-        with wave.open(output_path, "wb") as wav:
-            wav.setnchannels(NUM_CHANNELS)
-            wav.setsampwidth(SAMPLE_WIDTH)
-            wav.setframerate(SAMPLE_RATE)
+                # Print header for streaming output
+                print("transcription result [stream]:", end=" ")
+                async for line in response.aiter_lines():
+                    # SSE events are `data: <payload>` lines separated by blank lines
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[len("data: "):]
+                    if payload == "[DONE]":
+                        break
+                    chunk = json.loads(payload)
+                    delta = chunk["choices"][0].get("delta", {}).get("content")
+                    if delta:
+                        print(delta, end="", flush=True)
 
-            # Ask the server for raw PCM bytes streamed as they are decoded
-            async with client.audio.speech.with_streaming_response.create(
-                model = model,
-                input = text,
-                voice = "default",              # Placeholder, ignored by VoxCPM2
-                response_format = "pcm",        # Raw streaming supports pcm/wav only
-                # vLLM-Omni extension: stream raw audio bytes instead of SSE events
-                extra_body = {"stream_format": "audio"},
-            ) as response:
-                # Consume the response body chunk by chunk
-                async for chunk in response.iter_bytes(chunk_size):
-                    if first_chunk_time is None:
-                        first_chunk_time = time.perf_counter() - start_time
-                        print(f"First audio chunk after {first_chunk_time:.2f} seconds")
-                    # Append the PCM samples to the WAV file immediately
-                    wav.writeframes(chunk)
-                    total_bytes += len(chunk)
-                    # Show progress without newline
-                    print(".", end="", flush=True)
+    # Print final newline after streaming completes
+    print("\n[Stream finished]")
 
-        # Print streaming results and processing metrics
-        processing_time = time.perf_counter() - start_time
-        duration = total_bytes / (SAMPLE_RATE * NUM_CHANNELS * SAMPLE_WIDTH)
-        print(f"\n=== Streaming Speech Synthesis Results [async] ===")
-        print(f"Output File: {output_path} ({total_bytes:,} bytes, {duration:.2f} s of audio)")
-        print(f"Processing Time: {processing_time:.2f} seconds")
-        print("=" * 35)
 
-async def main():
+def main():
     """
-    Main coroutine to demonstrate asynchronous streaming speech synthesis.
-    Sets up the AsyncOpenAI client and initiates raw audio streaming.
+    Main function to demonstrate asynchronous streaming audio transcription.
     """
-    # Default vLLM server endpoint (adjust if your server runs on different port/host)
-    openai_api_base = "http://localhost:8002/v1"
-    # Text to synthesize
-    text = "Xin chào, đây là VoicePlatform. Âm thanh được phát trực tiếp trong lúc mô hình đang tạo."
-    # Model name for speech synthesis
-    model_name = "openbmb/VoxCPM2"
-    # Where to write the generated audio
-    output_path = os.path.join(RESULTS_DIR, "output_async_stream.wav")
-    # Make sure the results directory exists before writing into it
-    os.makedirs(RESULTS_DIR, exist_ok = True)
+    # Only needed when the server was started with --api-key / VLLM_API_KEY
+    api_key = os.environ.get("VLLM_API_KEY", "EMPTY")
+    # Default vLLM endpoint (adjust if your server runs on different port/host)
+    api_url = "http://localhost:8002/v1/audio/transcriptions"
+    # Path to the audio file for transcription
+    audio_path = "resources/sample_vi.mp3"
 
-    print(f"Using model: {model_name}")
+    # Run the async streaming function
+    asyncio.run(stream_asr_response(api_url = api_url,
+                                    audio_path = audio_path,
+                                    model = "fun-asr-mlt-nano",
+                                    language = "vi",
+                                    api_key = api_key))
 
-    # Start streaming speech synthesis
-    await stream_speech(text = text,
-                        model = model_name,
-                        openai_api_base = openai_api_base,
-                        output_path = output_path)
-
-# Entry point: Run the main coroutine when script is executed directly
+# Entry point: Run the main function when script is executed directly
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -17,7 +17,7 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 ### 🚀 Performance Optimizations
 - GPU-accelerated inference with vLLM for real-time transcription
 - Configurable GPU memory utilization and model parameters
-- Efficient batch processing for multiple audio files
+- Concurrent request handling through vLLM batching (up to `MAX_NUM_SEQS` sequences)
 - Optimized for low-latency transcription workflows
 
 ### 🔒 Privacy & Security
@@ -30,7 +30,22 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 - RESTful API with OpenAI-compatible endpoints
 - Comprehensive examples for different integration scenarios
 - Docker-based deployment for consistent environments
-- Detailed logging and monitoring capabilities
+- Container logs (`make logs`) and a `/health` endpoint for monitoring
+
+<br />
+
+# 📡 Capabilities
+
+| Capability | Protocol | Endpoint | Status |
+|------------|----------|----------|--------|
+| Transcription | HTTP | `POST /v1/audio/transcriptions` | ✅ |
+| Transcription (base64 audio) | HTTP | `POST /v1/chat/completions` | ✅ |
+| Transcription (streaming text) | HTTP (SSE) | `POST /v1/audio/transcriptions` with `stream=true` | ✅ |
+| Realtime (live audio) | WebSocket | `ws://<host>:8001/v1/realtime` | ✅ |
+
+**Legend**: ✅ supported · 🚧 in progress · ❌ not supported
+
+> ℹ️ Realtime relies on the `--hf-overrides` flag in `docker-compose.yml`, which switches Qwen3-ASR to its realtime architecture so vLLM mounts the `/v1/realtime` route.
 
 <br />
 
@@ -45,7 +60,7 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 2. **🛠️ Software Dependencies**
    - 🐳 **Docker and Docker Compose**
    - 🎮 **NVIDIA Container Toolkit** (for GPU support)
-   - ⚡ **CUDA Toolkit 11.8+** (for GPU acceleration)
+   - ⚡ **NVIDIA driver** compatible with the CUDA version of the `vllm/vllm-openai:v0.24.0` image (a host CUDA Toolkit is not required, CUDA ships inside the image)
 
 <br />
 
@@ -103,10 +118,13 @@ Built with vLLM for optimal performance and GPU acceleration, this service offer
 # 📝 Examples
 
 All examples read the model name from `MODEL_NAME` in your `.env` (falling back to
-`Qwen/Qwen3-ASR-1.7B`), so they stay in sync with the served model. This needs
-`pip install python-dotenv`. Run them from the project root, since the audio path is relative.
+`Qwen/Qwen3-ASR-1.7B`), so they stay in sync with the served model. Install the client
+dependencies first: `pip install openai httpx requests python-dotenv`. Run them from the project root,
+since the audio path is relative.
 
-## 🎵 Audio File Transcription
+## 📄 Audio Transcription (non-streaming)
+
+**Transcription**: HTTP · `POST /v1/audio/transcriptions`
 
 Check out the `examples/audio_transcription_example.py` file to see how to:
 - 🎯 **Transcribe** audio files using the OpenAI-compatible API
@@ -118,7 +136,21 @@ Check out the `examples/audio_transcription_example.py` file to see how to:
 python examples/audio_transcription_example.py
 ```
 
+### ⏱️ Real-Time Factor (RTF)
+
+RTF = processing time ÷ audio duration. A value below 1 means faster than real time.
+
+Measured with the OpenAI SDK (`client.audio.transcriptions.create`) on `resources/sample_vi.mp3` (7.81 s of audio): one warm-up request, then 5 timed requests.
+
+| Model | GPU | Audio | Mean time | RTF (mean) | RTF (min – max) |
+|-------|-----|-------|-----------|------------|-----------------|
+| `Qwen/Qwen3-ASR-0.6B` | NVIDIA RTX 3060 | 7.81 s | 0.184 s | 0.024 | 0.023 – 0.024 |
+
+> ℹ️ Times are end-to-end over localhost (upload + decode + inference) with `MODEL_NAME=Qwen/Qwen3-ASR-0.6B` and the default GPU/sequence limits from `docker-compose.yml`; the first (warm-up) request was slightly slower (0.216 s). RTF depends on the model, GPU and concurrent load, so re-measure on your own hardware.
+
 ## 🔐 Base64 Audio Transcription
+
+**Transcription**: HTTP · `POST /v1/chat/completions`
 
 The `examples/base64_audio_example.py` demonstrates:
 - 🔐 **Encoding** audio files in base64 format
@@ -130,9 +162,11 @@ The `examples/base64_audio_example.py` demonstrates:
 python examples/base64_audio_example.py
 ```
 
-## 🌊 Streaming Transcription
+## 🌊 Streaming Transcription (SSE)
 
 ### 🔄 Asynchronous Streaming
+
+**Transcription**: HTTP (SSE) · `POST /v1/audio/transcriptions` with `stream=true`
 
 The `examples/async_streaming_example.py` demonstrates:
 - 🔄 **Real-time** transcription using async OpenAI client
@@ -146,6 +180,8 @@ python examples/async_streaming_example.py
 
 ### 🔄 Synchronous Streaming
 
+**Transcription**: HTTP (SSE) · `POST /v1/audio/transcriptions` with `stream=true`
+
 The `examples/sync_streaming_example.py` shows:
 - 🔄 **Streaming** transcription using raw HTTP requests
 - 📡 **Server-Sent Events** (SSE) format handling
@@ -156,7 +192,9 @@ The `examples/sync_streaming_example.py` shows:
 python examples/sync_streaming_example.py
 ```
 
-### 🔌 WebSocket Realtime Streaming
+## ⚡ Realtime Transcription (WebSocket)
+
+**Realtime**: WebSocket · `ws://localhost:8001/v1/realtime`
 
 The `examples/websocket_streaming_example.py` demonstrates:
 - 🔌 **Connecting** to vLLM's Realtime API over WebSocket (`/v1/realtime`), distinct from the REST/SSE endpoint used above
@@ -213,6 +251,8 @@ DOWNLOAD_DIR=/root/.cache/huggingface/hub  # Model cache directory
 - [x] 🚀 Basic ASR service deployment
 - [x] 📝 Example implementations
 - [x] 🌊 Streaming transcription capabilities (async and sync)
+- [x] 🔌 WebSocket realtime transcription (`/v1/realtime`)
+- [x] ⏱️ RTF measurement on the sample audio
 
 <br />
 
@@ -223,7 +263,7 @@ DOWNLOAD_DIR=/root/.cache/huggingface/hub  # Model cache directory
 - 🔌 **API Compatibility**: OpenAI API format
 - 🖥️ **GPU Support**: NVIDIA CUDA
 - 📊 **Monitoring**: Docker logging
-- 🛠️ **Client Libraries**: OpenAI Python SDK
+- 🛠️ **Client Libraries**: OpenAI Python SDK, httpx, requests, websockets
 
 <br />
 

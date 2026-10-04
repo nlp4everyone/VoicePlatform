@@ -1,8 +1,10 @@
 from typing import Tuple, Union
 from functools import lru_cache
 import soundfile as sf
-import io, torch, torchaudio, magic
+import io, torch, torchaudio, magic, logging
+from app.exceptions.audio import InvalidAudioException
 magic_mime = magic.Magic(mime=True)
+logger = logging.getLogger("ray.serve")
 
 
 @lru_cache(maxsize=8)
@@ -34,9 +36,21 @@ def load_audio_from_bytes(audio_bytes: bytes,
 
     Returns:
         Tuple of (waveform tensor, duration in seconds)
+
+    Raises:
+        InvalidAudioException: If the audio cannot be decoded or has no samples
     """
     buffer = io.BytesIO(audio_bytes)
-    waveform, sr = torchaudio.load(buffer)
+    try:
+        waveform, sr = torchaudio.load(buffer)
+    except Exception as e:
+        # The decoder error names internal objects, so log it and keep the client message generic
+        logger.warning(f"Audio decoding failed: {e}")
+        raise InvalidAudioException(reason="the file is corrupted or uses an unsupported codec") from e
+
+    # A valid header with no samples would fail later inside the model
+    if waveform.numel() == 0:
+        raise InvalidAudioException(reason="audio contains no samples")
 
     waveform = waveform[0] if waveform.shape[0] == 1 else waveform.mean(dim=0)
 

@@ -7,24 +7,24 @@ Ray Serve deployment that owns the FastAPI ingress and the batch transcription l
 **Deployment config** (set via `@serve.deployment`):
 - `num_replicas=NUM_REPLICAS` — number of independent replicas; each replica holds one model copy
 - `num_gpus=NUM_GPUS` — GPU resources reserved per replica
+- `num_cpus=DECODE_WORKERS` — one CPU reserved per audio decode thread
 - `max_ongoing_requests=MAX_ONGOING_REQUESTS` — maximum in-flight requests per replica before Ray Serve applies backpressure
 
 **`__init__()`**
 - Re-applies `ray.serve` log level to INFO (Ray Serve resets it during actor initialization)
 - Calls `RecognizerFactory.create()` to load the ASR model
-- Caches the deployment handle (`serve.get_deployment_handle`) for self-routing into the batch queue
+- Creates a `ThreadPoolExecutor(max_workers=DECODE_WORKERS)` for audio decoding — an explicit, bounded pool instead of asyncio's default executor
 - Creates a `ThreadPoolExecutor(max_workers=1)` — a single dedicated thread keeps all GPU work serialized and prevents CUDA context migration across threads
 
 **`transcribe_audio()`** — FastAPI endpoint handler
 - Validates the requested model matches the loaded model
 - Validates audio format via MIME check
-- Forwards to `batched_transcribe` via `.remote()` and awaits the result
+- Decodes the audio on the decode executor; undecodable or empty audio is rejected with `InvalidAudioException` for this request only
+- Calls `batched_transcribe` directly (no deployment handle) so each request holds a single `max_ongoing_requests` slot, and awaits the result
 - Formats the response based on `timestamp_granularity`
 
 **`batched_transcribe()`** — `@serve.batch` handler
-- Receives a batch of `(audio_bytes, granularity)` pairs aggregated by Ray Serve
-- Decodes audio in parallel with `asyncio.to_thread`
-- Frees raw bytes immediately after decoding to reduce peak memory
+- Receives a batch of `(waveform, granularity)` pairs aggregated by Ray Serve; audio is already decoded, so one bad upload cannot fail the batch
 - Dispatches to `process_batch_transcription()` on the GPU executor
 
 ---
@@ -74,6 +74,7 @@ Unknown model names raise `ValueError` at startup, so the deployment fails inste
 - Mono: `waveform[0]` for single-channel, `waveform.mean(dim=0)` for multi-channel
 - Resamples if `sr != target_sr` using a cached `torchaudio.transforms.Resample` (keyed by `(sr_src, sr_tgt)` via `lru_cache(maxsize=8)`)
 - Returns `(waveform, duration_seconds)`
+- Raises `InvalidAudioException` when decoding fails or the audio has no samples
 
 **`is_audio_file(data, buffer_size=2048) → bool`**
 - Uses `python-magic` to sniff MIME type from the first 2048 bytes
@@ -137,5 +138,6 @@ Reads `config/config.toml` and exposes sections as dicts. Used by `app/core/conf
 |---|---|---|
 | `TranscriptedModelNotFoundException` | Requested model ≠ loaded model | 404 |
 | `UnsupportedAudioFormatException` | MIME check fails | 415 |
+| `InvalidAudioException` | Audio cannot be decoded or has no samples | 400 |
 
-Both are registered via `asr_app.add_exception_handler()` and handled by `common_exception_handler`.
+All are registered via `asr_app.add_exception_handler()` and handled by `common_exception_handler`.

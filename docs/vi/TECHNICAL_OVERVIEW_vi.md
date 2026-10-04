@@ -18,15 +18,16 @@
 │  │  num_replicas=NUM_REPLICAS                                 │  │
 │  │  num_gpus=NUM_GPUS  mỗi replica                            │  │
 │  │  max_ongoing_requests=MAX_ONGOING_REQUESTS                 │  │
+│  │  num_cpus=DECODE_WORKERS                                   │  │
 │  │                                                            │  │
 │  │  FastAPI ingress (@serve.ingress)                          │  │
 │  │   POST /v1/audio/transcriptions                            │  │
 │  │       │ kiểm tra model, đọc bytes, MIME check              │  │
-│  │       │ .batched_transcribe.remote(bytes, granularity)     │  │
+│  │       │ run_in_executor(decode pool, load_audio_from_bytes)│  │
+│  │       │ self.batched_transcribe(waveform, granularity)     │  │
 │  │       ▼                                                    │  │
 │  │  @serve.batch                                              │  │
-│  │  batched_transcribe(batch, granularities)                  │  │
-│  │       │ asyncio.to_thread(load_audio_from_bytes) × N       │  │
+│  │  batched_transcribe(waveforms, granularities)              │  │
 │  │       │ run_in_executor(GPU thread, process_batch)         │  │
 │  │       ▼                                                    │  │
 │  │  process_batch_transcription()                             │  │
@@ -51,19 +52,19 @@
 2. Đọc toàn bộ audio bytes vào memory.
 3. Kiểm tra MIME type qua `python-magic` — raise `UnsupportedAudioFormatException` nếu không phải audio.
 
-### Giai đoạn 2 — Xếp hàng batch
+### Giai đoạn 2 — Giải mã audio (theo từng request, CPU)
 
-Audio bytes và `timestamp_granularity` được gửi vào `batched_transcribe` qua `.remote()`. Ray Serve gom các call đồng thời thành một batch (tối đa `MAX_BATCH_SIZE`) trong thời gian tối đa `BATCH_WAIT_TIMEOUT_S` giây.
-
-### Giai đoạn 3 — Giải mã audio (song song, CPU)
-
-Mỗi item trong batch được giải mã song song qua `asyncio.to_thread` bằng `load_audio_from_bytes()`:
+`load_audio_from_bytes()` chạy trên pool giải mã riêng của replica (`ThreadPoolExecutor(max_workers=DECODE_WORKERS)`), nên các request đồng thời được giải mã song song mà không chặn event loop:
 - `torchaudio.load` → waveform + sample rate
 - Chuyển về mono (mean theo channel)
 - Resample về 16kHz nếu cần (dùng `Resample` transform đã cache qua `lru_cache`)
 - Trả về `(waveform: torch.Tensor, duration: float)`
 
-Raw bytes được giải phóng ngay sau khi giải mã.
+Việc giải mã diễn ra trước khi gom batch, nên file hỏng hoặc rỗng chỉ khiến request đó nhận `InvalidAudioException` (400). Raw bytes được giải phóng ngay sau khi giải mã.
+
+### Giai đoạn 3 — Xếp hàng batch
+
+Waveform đã giải mã và `timestamp_granularity` được truyền vào `batched_transcribe` bằng lời gọi method trực tiếp. Ray Serve gom các call đồng thời trong replica thành một batch (tối đa `MAX_BATCH_SIZE`) trong thời gian tối đa `BATCH_WAIT_TIMEOUT_S` giây. Gọi trực tiếp thay vì qua deployment handle giúp mỗi request chỉ chiếm một slot `max_ongoing_requests`.
 
 ### Giai đoạn 4 — GPU transcription (luồng riêng)
 
@@ -104,6 +105,7 @@ Tất cả tham số nằm trong `config/config.toml`. Thay đổi yêu cầu re
 | `MAX_ONGOING_REQUESTS` | `16` | Số request đang xử lý tối đa mỗi replica |
 | `MAX_BATCH_SIZE` | `8` | Số item tối đa mỗi GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian chờ tối đa để điền đầy batch (giây) |
+| `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica (cũng là `num_cpus` Ray của replica) |
 
 ### `[asr]`
 

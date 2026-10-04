@@ -40,9 +40,9 @@ app.py (serve run app.app:deployment)
             │       │
             │       └── logger.info("ASR model loaded on CUDA/CPU")
             │
-            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N")
+            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N decode_workers=N")
             │
-            ├── serve.get_deployment_handle(DEPLOYMENT_NAME)   ← handle được cache
+            ├── ThreadPoolExecutor(max_workers=DECODE_WORKERS)  ← pool giải mã audio riêng
             └── ThreadPoolExecutor(max_workers=1)               ← luồng GPU riêng
 ```
 
@@ -69,32 +69,30 @@ app.py (serve run app.app:deployment)
     │       KHÔNG → raise UnsupportedAudioFormatException(file_extension)
     │       CÓ  ↓
     │
-    └── self._handle.batched_transcribe.remote(audio_bytes, timestamp_granularity)
-            → chờ TranscriptionResult (block cho đến khi batch hoàn thành)
-
-③ Ray Serve gom batch
-    Gom các call .remote() đồng thời cho đến khi:
-        len(batch) == MAX_BATCH_SIZE  HOẶC  thời gian chờ >= BATCH_WAIT_TIMEOUT_S
-    sau đó gọi batched_transcribe(batch, timestamp_granularities)
-
-④ ASRService.batched_transcribe(batch: List[bytes], timestamp_granularities: List[str|None])
-    │
-    ├── asyncio.gather(
-    │       asyncio.to_thread(load_audio_from_bytes, audio_bytes)
-    │       cho mỗi item trong batch
-    │   )
-    │   [giải mã CPU song song]
+    ├── run_in_executor(self._decode_executor, load_audio_from_bytes, audio_bytes)
+    │   [giải mã CPU, theo từng request]
     │   load_audio_from_bytes(audio_bytes, target_sr=16000):
     │       torchaudio.load(BytesIO) → waveform, sr
+    │           lỗi giải mã → raise InvalidAudioException  (400, chỉ request này)
+    │       không có sample? → raise InvalidAudioException
     │       mono: waveform[0] nếu 1 channel, waveform.mean(dim=0) nếu nhiều channel
     │       sr != 16000? → _get_resampler(sr, 16000)(waveform)  [lru_cache]
     │       trả về (waveform: Tensor[T], duration: float)
     │
-    ├── batch = None   ← giải phóng raw bytes ngay
+    ├── audio_bytes = None   ← giải phóng raw bytes ngay
     │
-    ├── audio_tensors = [t for t, _ in decoded]
-    ├── durations     = [d for _, d in decoded]
-    ├── decoded = None
+    ├── await self.batched_transcribe(waveform, timestamp_granularity)
+    │       gọi trực tiếp, không qua deployment handle → mỗi request chiếm 1 slot max_ongoing_requests
+    │       → chờ TranscriptionResult (block cho đến khi batch hoàn thành)
+    │
+    └── result.duration = duration
+
+③ Ray Serve gom batch
+    Gom các call batched_transcribe() đồng thời trong replica này cho đến khi:
+        len(batch) == MAX_BATCH_SIZE  HOẶC  thời gian chờ >= BATCH_WAIT_TIMEOUT_S
+    sau đó gọi batched_transcribe(audio_tensors, timestamp_granularities)
+
+④ ASRService.batched_transcribe(audio_tensors: List[Tensor], timestamp_granularities: List[str|None])
     │
     └── asyncio.get_event_loop().run_in_executor(
             self._gpu_executor,           ← executor 1 luồng (mỗi replica một cái)

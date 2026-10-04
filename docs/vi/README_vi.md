@@ -62,11 +62,11 @@ Client (OpenAI SDK / HTTP)
 FastAPI  (ASRService — Ray Serve ingress)
         │  kiểm tra model, đọc bytes, kiểm tra MIME audio
         │
-        │  .batched_transcribe.remote(audio_bytes, granularity)
+        │  load_audio_from_bytes()  [ThreadPoolExecutor giải mã riêng]
+        │  self.batched_transcribe(waveform, granularity)
         ▼
 Ray Serve batch queue  (MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S)
         │
-        │  load_audio_from_bytes() × N  [song song asyncio.to_thread]
         │  process_batch_transcription() [GPU ThreadPoolExecutor riêng]
         ▼
 ParakeetRecognizer
@@ -126,6 +126,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
    MAX_ONGOING_REQUESTS = 16
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
+   DECODE_WORKERS = 4
 
    [asr]
    ASR_MODEL_NAME = "nvidia/parakeet-ctc-0.6b-vi"
@@ -221,8 +222,6 @@ Các request đồng thời được gom thành GPU batch (tối đa `MAX_BATCH_
 
 > RTF tổng hợp = thời gian mỗi vòng ÷ (số request × thời lượng audio), thể hiện thông lượng.
 
-> ⚠️ **Giới hạn đã biết**: giữ số request đồng thời không vượt quá `MAX_ONGOING_REQUESTS / 2` (8 với mặc định 16). Mỗi request HTTP chiếm một slot trong lúc gọi `batched_transcribe` qua handle của chính deployment, và lời gọi này cần thêm một slot nữa. Với 16 request cùng lúc ở cấu hình mặc định, mọi slot bị các request bên ngoài chiếm hết và dịch vụ bị kẹt (log báo `Failed to route request after N attempts`) cho tới khi client ngắt kết nối. Nếu dự kiến có nhiều client đồng thời hơn, hãy tăng `MAX_ONGOING_REQUESTS` lên ít nhất gấp đôi số đó.
-
 ## 🎵 File audio mẫu
 
 File audio mẫu nằm trong `resources/` (`sample_vi.wav` tiếng Việt, `sample_en.wav` tiếng Anh) để thử transcription ngay sau khi triển khai.
@@ -239,9 +238,10 @@ Hành vi serving được đặt trong `config/config.toml`. Thay đổi có hi�
 |------|----------|-------|
 | `[serving] NUM_GPUS` | `1` | Số GPU dành cho mỗi replica (giá trị phân số như `0.5` cho phép các replica dùng chung GPU) |
 | `[serving] NUM_REPLICAS` | `1` | Số replica của model |
-| `[serving] MAX_ONGOING_REQUESTS` | `16` | Số request đang xử lý tối đa trên mỗi replica (xem giới hạn đã biết ở mục Request đồng thời) |
+| `[serving] MAX_ONGOING_REQUESTS` | `16` | Số request đang xử lý tối đa trên mỗi replica |
 | `[serving] MAX_BATCH_SIZE` | `8` | Số request tối đa được gộp vào một GPU batch |
 | `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian một batch chờ cho đầy trước khi được gửi đi |
+| `[serving] DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica; đồng thời là `num_cpus` Ray dành cho replica |
 | `[asr] ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | Model NeMo Parakeet cần load (tên phải bắt đầu bằng `nvidia/parakeet`) |
 | `[asr] ASR_DEVICE` | `auto` | `auto`, `cuda` hoặc `cpu` |
 | `[asr] SPLIT_MIXED_BATCH` | `true` | Chạy request có/không có timestamp thành các GPU sub-call riêng |

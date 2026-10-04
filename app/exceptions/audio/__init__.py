@@ -1,1 +1,2 @@
-from .base import UnsupportedAudioFormatException
+from .base import (UnsupportedAudioFormatException,
+                   InvalidAudioException)

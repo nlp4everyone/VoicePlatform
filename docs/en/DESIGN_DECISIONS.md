@@ -34,7 +34,7 @@ The ASR model is served through **Ray Serve** rather than a bare FastAPI/Uvicorn
 
 ### Description
 
-`batched_transcribe` is decorated with `@serve.batch(max_batch_size=MAX_BATCH_SIZE, batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)`. Ray Serve groups concurrent `.remote()` calls into a single list before invoking the handler.
+`batched_transcribe` is decorated with `@serve.batch(max_batch_size=MAX_BATCH_SIZE, batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)`. Ray Serve groups concurrent calls within the replica into a single list before invoking the handler.
 
 ### Pros
 

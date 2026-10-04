@@ -24,10 +24,11 @@ from app.schema.transcription.type import TranscriptionType
 from app.schema.transcription.base.usage import *
 # Custom exceptions
 from app.exceptions.transcription import TranscriptedModelNotFoundException
-from app.exceptions.audio import UnsupportedAudioFormatException
+from app.exceptions.audio import (UnsupportedAudioFormatException,
+                                  InvalidAudioException)
 from app.exceptions.handlers import common_exception_handler
 # Other utils
-import logging, math, asyncio, functools, concurrent.futures
+import logging, math, asyncio, functools, concurrent.futures, torch
 from pathlib import Path
 
 # Suppress NeMo/Lightning verbose output in actor process (app.py runs in the
@@ -56,8 +57,12 @@ asr_app = FastAPI(openapi_tags=tags_metadata)
 # Register custom exception handler for ASR model not found errors
 asr_app.add_exception_handler(TranscriptedModelNotFoundException, common_exception_handler)
 asr_app.add_exception_handler(UnsupportedAudioFormatException, common_exception_handler)
+asr_app.add_exception_handler(InvalidAudioException, common_exception_handler)
 
-@serve.deployment(ray_actor_options={"num_gpus": NUM_GPUS},
+@serve.deployment(ray_actor_options={"num_gpus": NUM_GPUS,
+                                     # Reserve a CPU per decode thread; Ray also sets
+                                     # OMP_NUM_THREADS from this value
+                                     "num_cpus": DECODE_WORKERS},
                   num_replicas=NUM_REPLICAS,
                   max_ongoing_requests=MAX_ONGOING_REQUESTS)
 @serve.ingress(asr_app)
@@ -73,6 +78,7 @@ class ASRService:
     - GPU resources based on NUM_GPUS configuration
     - Multiple replicas for scalability (NUM_REPLICAS)
     - Maximum concurrent requests limit (MAX_ONGOING_REQUESTS)
+    - One CPU per audio decode thread (DECODE_WORKERS)
     """
 
     def __init__(self):
@@ -94,11 +100,15 @@ class ASRService:
         logger.info(
             f"ASRService ready | replicas={NUM_REPLICAS} "
             f"max_ongoing_requests={MAX_ONGOING_REQUESTS} "
-            f"max_batch_size={MAX_BATCH_SIZE}"
+            f"max_batch_size={MAX_BATCH_SIZE} "
+            f"decode_workers={DECODE_WORKERS}"
         )
 
-        # Cache handle once — reusable across requests per Ray Serve docs.
-        self._handle = serve.get_deployment_handle(DEPLOYMENT_NAME)
+        # Dedicated, bounded pool for audio decoding: unlike asyncio's default
+        # executor (sized from the host CPU count and shared process-wide), its
+        # size is explicit and caps the CPU and memory spent decoding at once.
+        self._decode_executor = concurrent.futures.ThreadPoolExecutor(max_workers=DECODE_WORKERS,
+                                                                      thread_name_prefix="audio-decode")
 
         # Single-thread executor keeps GPU work pinned to one thread, avoiding
         # CUDA context migration and pool contention from asyncio's default executor.
@@ -107,33 +117,22 @@ class ASRService:
     @serve.batch(max_batch_size=MAX_BATCH_SIZE,
                  batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)
     async def batched_transcribe(self,
-                                 batch: List[bytes],
+                                 audio_tensors: List[torch.Tensor],
                                  timestamp_granularities: List[Union[str, None]]):
         """
         Batched transcription endpoint with Ray Serve automatic batching.
 
         Automatically batches individual requests for improved throughput.
-        Converts audio bytes to tensors directly without temporary files.
+        Audio is decoded per request before it gets here, so a broken upload
+        never fails the other requests in the batch.
 
         Args:
-            batch: List of audio data as bytes
+            audio_tensors: List of decoded mono 16 kHz waveforms
             timestamp_granularities: Timestamp requirements for each audio file
 
         Returns:
             List of transcription results
         """
-        # torchaudio.load + resample is CPU-bound; offloading each item to a thread
-        # reduces wall-clock from sum(decode) to max(decode).
-        decoded = await asyncio.gather(
-            *[asyncio.to_thread(load_audio_from_bytes, audio_bytes) for audio_bytes in batch]
-        )
-        # Release raw bytes immediately — tensors are all we need from here on.
-        batch = None
-        audio_tensors = [tensor for tensor, _ in decoded]
-        # Duration is derived from tensor shape to avoid re-parsing audio bytes later.
-        durations = [duration for _, duration in decoded]
-        decoded = None
-
         transcriptions = await asyncio.get_event_loop().run_in_executor(
             self._gpu_executor,
             functools.partial(
@@ -144,8 +143,6 @@ class ASRService:
                 split_mixed_batch=SPLIT_MIXED_BATCH
             )
         )
-        for result, duration in zip(transcriptions, durations):
-            result.duration = duration
         return transcriptions
 
     @asr_app.post("/v1/audio/transcriptions",
@@ -173,7 +170,8 @@ class ASRService:
 
         ### Raises:
         - `TranscriptedModelNotFoundException`: If requested model is not available
-        - `ValueError`: If audio processing fails
+        - `UnsupportedAudioFormatException`: If the file is not an audio format
+        - `InvalidAudioException`: If the audio cannot be decoded or has no samples
         """
         logger.debug(f"ASR request received - model: {model}")
 
@@ -191,11 +189,26 @@ class ASRService:
             file_extension = Path(file.filename).suffix.lstrip('.') if file.filename else ""
             raise UnsupportedAudioFormatException(file_format=file_extension)
 
-        # Get deployment handle and process transcription
-        transcription_result: TranscriptionResult = await self._handle.batched_transcribe.remote(
-            audio_bytes,
+        # Decode here rather than inside the batch: a broken file is rejected with
+        # 400 for this request only. Decoding is CPU-bound, so it runs on the
+        # dedicated decode pool to keep the event loop free.
+        waveform, duration = await asyncio.get_running_loop().run_in_executor(
+            self._decode_executor,
+            load_audio_from_bytes,
+            audio_bytes
+        )
+        # Release raw bytes immediately — the tensor is all we need from here on.
+        audio_bytes = None
+
+        # Call the batch method directly: Ray Serve still batches concurrent calls
+        # within this replica. Going through a deployment handle would make every
+        # request hold two max_ongoing_requests slots (and can deadlock once the
+        # outer requests fill them all), and would serialize the tensor.
+        transcription_result: TranscriptionResult = await self.batched_transcribe(
+            waveform,
             timestamp_granularity
         )
+        transcription_result.duration = duration
 
         # Determine response format based on granularity
         output_type = get_transcription_type(timestamp_granularity)

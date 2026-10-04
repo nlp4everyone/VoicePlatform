@@ -40,9 +40,9 @@ app.py (serve run app.app:deployment)
             │       │
             │       └── logger.info("ASR model loaded on CUDA/CPU")
             │
-            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N")
+            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N decode_workers=N")
             │
-            ├── serve.get_deployment_handle(DEPLOYMENT_NAME)   ← cached handle
+            ├── ThreadPoolExecutor(max_workers=DECODE_WORKERS)  ← dedicated audio decode pool
             └── ThreadPoolExecutor(max_workers=1)               ← dedicated GPU thread
 ```
 
@@ -69,32 +69,30 @@ app.py (serve run app.app:deployment)
     │       NO  → raise UnsupportedAudioFormatException(file_extension)
     │       YES ↓
     │
-    └── self._handle.batched_transcribe.remote(audio_bytes, timestamp_granularity)
-            → awaits TranscriptionResult (blocks until batch completes)
-
-③ Ray Serve batch accumulation
-    Collects concurrent .remote() calls until:
-        len(batch) == MAX_BATCH_SIZE  OR  wait >= BATCH_WAIT_TIMEOUT_S
-    then calls batched_transcribe(batch, timestamp_granularities)
-
-④ ASRService.batched_transcribe(batch: List[bytes], timestamp_granularities: List[str|None])
-    │
-    ├── asyncio.gather(
-    │       asyncio.to_thread(load_audio_from_bytes, audio_bytes)
-    │       for each item in batch
-    │   )
-    │   [parallel CPU decode]
+    ├── run_in_executor(self._decode_executor, load_audio_from_bytes, audio_bytes)
+    │   [CPU decode, per request]
     │   load_audio_from_bytes(audio_bytes, target_sr=16000):
     │       torchaudio.load(BytesIO) → waveform, sr
+    │           decode error → raise InvalidAudioException  (400, this request only)
+    │       no samples?      → raise InvalidAudioException
     │       mono: waveform[0] if channels==1 else waveform.mean(dim=0)
     │       sr != 16000? → _get_resampler(sr, 16000)(waveform)  [lru_cache]
     │       returns (waveform: Tensor[T], duration: float)
     │
-    ├── batch = None   ← free raw bytes immediately
+    ├── audio_bytes = None   ← free raw bytes immediately
     │
-    ├── audio_tensors = [t for t, _ in decoded]
-    ├── durations     = [d for _, d in decoded]
-    ├── decoded = None  ← free decoded tuples
+    ├── await self.batched_transcribe(waveform, timestamp_granularity)
+    │       direct call, no deployment handle → one max_ongoing_requests slot per request
+    │       → awaits TranscriptionResult (blocks until batch completes)
+    │
+    └── result.duration = duration
+
+③ Ray Serve batch accumulation
+    Collects concurrent batched_transcribe() calls in this replica until:
+        len(batch) == MAX_BATCH_SIZE  OR  wait >= BATCH_WAIT_TIMEOUT_S
+    then calls batched_transcribe(audio_tensors, timestamp_granularities)
+
+④ ASRService.batched_transcribe(audio_tensors: List[Tensor], timestamp_granularities: List[str|None])
     │
     └── asyncio.get_event_loop().run_in_executor(
             self._gpu_executor,           ← single-thread executor (one per replica)

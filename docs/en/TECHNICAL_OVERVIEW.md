@@ -18,15 +18,16 @@
 │  │  num_replicas=NUM_REPLICAS                                 │  │
 │  │  num_gpus=NUM_GPUS  per replica                            │  │
 │  │  max_ongoing_requests=MAX_ONGOING_REQUESTS                 │  │
+│  │  num_cpus=DECODE_WORKERS                                   │  │
 │  │                                                            │  │
 │  │  FastAPI ingress (@serve.ingress)                          │  │
 │  │   POST /v1/audio/transcriptions                            │  │
 │  │       │ validate model, read bytes, MIME check             │  │
-│  │       │ .batched_transcribe.remote(bytes, granularity)     │  │
+│  │       │ run_in_executor(decode pool, load_audio_from_bytes)│  │
+│  │       │ self.batched_transcribe(waveform, granularity)     │  │
 │  │       ▼                                                    │  │
 │  │  @serve.batch                                              │  │
-│  │  batched_transcribe(batch, granularities)                  │  │
-│  │       │ asyncio.to_thread(load_audio_from_bytes) × N       │  │
+│  │  batched_transcribe(waveforms, granularities)              │  │
 │  │       │ run_in_executor(GPU thread, process_batch)         │  │
 │  │       ▼                                                    │  │
 │  │  process_batch_transcription()                             │  │
@@ -51,19 +52,19 @@
 2. Reads all audio bytes into memory.
 3. Validates MIME type via `python-magic` — raises `UnsupportedAudioFormatException` on non-audio input.
 
-### Stage 2 — Batch queuing
+### Stage 2 — Audio decoding (per request, CPU)
 
-The validated audio bytes and `timestamp_granularity` are sent to `batched_transcribe` via `self._handle.batched_transcribe.remote()`. Ray Serve accumulates concurrent calls into a batch (up to `MAX_BATCH_SIZE`) waiting at most `BATCH_WAIT_TIMEOUT_S` seconds.
-
-### Stage 3 — Audio decoding (parallel, CPU)
-
-For each item in the batch, `load_audio_from_bytes()` runs concurrently via `asyncio.to_thread`:
+`load_audio_from_bytes()` runs on the replica's dedicated decode pool (`ThreadPoolExecutor(max_workers=DECODE_WORKERS)`), so concurrent requests decode in parallel without blocking the event loop:
 - `torchaudio.load` → waveform + sample rate
 - Downmix to mono (mean over channels)
 - Resample to 16kHz if needed (cached `Resample` transform via `lru_cache`)
 - Returns `(waveform: torch.Tensor, duration: float)`
 
-Raw bytes are freed immediately after decoding.
+Decoding happens before batching, so a corrupted or empty file raises `InvalidAudioException` (400) for that request only. Raw bytes are freed immediately after decoding.
+
+### Stage 3 — Batch queuing
+
+The decoded waveform and `timestamp_granularity` are passed to `batched_transcribe` with a direct method call. Ray Serve accumulates concurrent calls within the replica into a batch (up to `MAX_BATCH_SIZE`) waiting at most `BATCH_WAIT_TIMEOUT_S` seconds. Calling the method directly instead of through a deployment handle keeps each request at a single `max_ongoing_requests` slot.
 
 ### Stage 4 — GPU transcription (dedicated thread)
 
@@ -104,6 +105,7 @@ All parameters live in `config/config.toml`. Changes require a container restart
 | `MAX_ONGOING_REQUESTS` | `16` | Max in-flight requests per replica |
 | `MAX_BATCH_SIZE` | `8` | Max items per GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Max wait time to fill a batch (seconds) |
+| `DECODE_WORKERS` | `4` | Audio decode threads per replica (also the replica's Ray `num_cpus`) |
 
 ### `[asr]`
 

@@ -36,7 +36,7 @@ Model ASR được phục vụ qua **Ray Serve** thay vì một tiến trình Fa
 
 ### Mô tả
 
-`batched_transcribe` được decorate bằng `@serve.batch(max_batch_size=MAX_BATCH_SIZE, batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)`. Ray Serve gom các call `.remote()` đồng thời thành một list trước khi gọi handler.
+`batched_transcribe` được decorate bằng `@serve.batch(max_batch_size=MAX_BATCH_SIZE, batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)`. Ray Serve gom các call đồng thời trong replica thành một list trước khi gọi handler.
 
 ### Ưu điểm
 

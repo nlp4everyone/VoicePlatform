@@ -7,24 +7,24 @@ Deployment của Ray Serve, sở hữu FastAPI ingress và logic xử lý batch.
 **Cấu hình deployment** (qua `@serve.deployment`):
 - `num_replicas=NUM_REPLICAS` — số replica độc lập; mỗi replica giữ một bản sao model
 - `num_gpus=NUM_GPUS` — tài nguyên GPU dành riêng mỗi replica
+- `num_cpus=DECODE_WORKERS` — mỗi luồng giải mã audio được dành một CPU
 - `max_ongoing_requests=MAX_ONGOING_REQUESTS` — số request đang xử lý tối đa mỗi replica trước khi Ray Serve áp dụng backpressure
 
 **`__init__()`**
 - Áp dụng lại log level INFO cho `ray.serve` (Ray Serve reset trong quá trình khởi tạo actor)
 - Gọi `RecognizerFactory.create()` để tải model ASR
-- Cache deployment handle (`serve.get_deployment_handle`) để tự routing vào batch queue
+- Tạo `ThreadPoolExecutor(max_workers=DECODE_WORKERS)` để giải mã audio — pool riêng, có giới hạn rõ ràng thay vì executor mặc định của asyncio
 - Tạo `ThreadPoolExecutor(max_workers=1)` — một luồng riêng giữ tất cả GPU work tuần tự, tránh CUDA context migration
 
 **`transcribe_audio()`** — handler FastAPI endpoint
 - Kiểm tra model request khớp với model đang chạy
 - Kiểm tra định dạng audio qua MIME check
-- Chuyển tiếp sang `batched_transcribe` qua `.remote()` và chờ kết quả
+- Giải mã audio trên decode executor; audio không giải mã được hoặc rỗng bị từ chối bằng `InvalidAudioException`, chỉ ảnh hưởng request đó
+- Gọi thẳng `batched_transcribe` (không qua deployment handle) để mỗi request chỉ chiếm một slot `max_ongoing_requests`, và chờ kết quả
 - Định dạng response theo `timestamp_granularity`
 
 **`batched_transcribe()`** — handler `@serve.batch`
-- Nhận batch các cặp `(audio_bytes, granularity)` được Ray Serve gom lại
-- Giải mã audio song song bằng `asyncio.to_thread`
-- Giải phóng raw bytes ngay sau khi giải mã để giảm peak memory
+- Nhận batch các cặp `(waveform, granularity)` được Ray Serve gom lại; audio đã được giải mã trước nên một file lỗi không làm hỏng cả batch
 - Dispatch sang `process_batch_transcription()` trên GPU executor
 
 ---
@@ -74,6 +74,7 @@ Tên model không hợp lệ sẽ raise `ValueError` lúc khởi động, deploy
 - Mono: `waveform[0]` nếu 1 channel, `waveform.mean(dim=0)` nếu nhiều channel
 - Resample về target_sr nếu `sr != target_sr` dùng `torchaudio.transforms.Resample` đã cache (key `(sr_src, sr_tgt)` qua `lru_cache(maxsize=8)`)
 - Trả về `(waveform, duration_seconds)`
+- Raise `InvalidAudioException` khi giải mã lỗi hoặc audio không có sample nào
 
 **`is_audio_file(data, buffer_size=2048) → bool`**
 - Dùng `python-magic` để kiểm tra MIME type từ 2048 byte đầu
@@ -137,5 +138,6 @@ Hỗn hợp (split_mixed_batch=False):
 |---|---|---|
 | `TranscriptedModelNotFoundException` | Model request ≠ model đang chạy | 404 |
 | `UnsupportedAudioFormatException` | MIME check thất bại | 415 |
+| `InvalidAudioException` | Audio không giải mã được hoặc không có sample | 400 |
 
-Cả hai được đăng ký qua `asr_app.add_exception_handler()` và xử lý bởi `common_exception_handler`.
+Tất cả được đăng ký qua `asr_app.add_exception_handler()` và xử lý bởi `common_exception_handler`.

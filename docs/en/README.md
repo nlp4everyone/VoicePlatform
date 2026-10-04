@@ -62,11 +62,11 @@ Client (OpenAI SDK / HTTP)
 FastAPI  (ASRService — Ray Serve ingress)
         │  validate model name, read bytes, validate audio MIME
         │
-        │  .batched_transcribe.remote(audio_bytes, granularity)
+        │  load_audio_from_bytes()  [dedicated decode ThreadPoolExecutor]
+        │  self.batched_transcribe(waveform, granularity)
         ▼
 Ray Serve batch queue  (MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S)
         │
-        │  load_audio_from_bytes() × N  [parallel asyncio.to_thread]
         │  process_batch_transcription() [dedicated GPU ThreadPoolExecutor]
         ▼
 ParakeetRecognizer
@@ -126,6 +126,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
    MAX_ONGOING_REQUESTS = 16
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
+   DECODE_WORKERS = 4
 
    [asr]
    ASR_MODEL_NAME = "nvidia/parakeet-ctc-0.6b-vi"
@@ -221,8 +222,6 @@ Concurrent requests are grouped into GPU batches (up to `MAX_BATCH_SIZE`), so th
 
 > Aggregate RTF = wall time ÷ (number of requests × audio duration), a measure of throughput.
 
-> ⚠️ **Known limitation**: keep concurrency at or below `MAX_ONGOING_REQUESTS / 2` (8 with the default of 16). Each HTTP request occupies one slot while it calls `batched_transcribe` through the deployment's own handle, which needs a second slot. With 16 simultaneous requests at the default setting, all slots are taken by the outer requests and the service stalls (`Failed to route request after N attempts` in the logs) until the clients disconnect. If you expect more concurrent clients, raise `MAX_ONGOING_REQUESTS` to at least twice that number.
-
 ## 🎵 Sample Audio Files
 
 Sample audio files are included in `resources/` (`sample_vi.wav` for Vietnamese, `sample_en.wav` for English) for testing the transcription capabilities immediately after deployment.
@@ -239,9 +238,10 @@ Serving behavior is set in `config/config.toml`. Changes take effect after `make
 |-----|---------|-------------|
 | `[serving] NUM_GPUS` | `1` | GPUs reserved per replica (fractions such as `0.5` let replicas share a GPU) |
 | `[serving] NUM_REPLICAS` | `1` | Number of model replicas |
-| `[serving] MAX_ONGOING_REQUESTS` | `16` | Maximum in-flight requests per replica (see the known limitation under Concurrent Requests) |
+| `[serving] MAX_ONGOING_REQUESTS` | `16` | Maximum in-flight requests per replica |
 | `[serving] MAX_BATCH_SIZE` | `8` | Maximum number of requests grouped into one GPU batch |
 | `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | How long a batch waits to fill before it is dispatched |
+| `[serving] DECODE_WORKERS` | `4` | Audio decode threads per replica; also reserved as the replica's Ray `num_cpus` |
 | `[asr] ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | NeMo Parakeet model to load (name must start with `nvidia/parakeet`) |
 | `[asr] ASR_DEVICE` | `auto` | `auto`, `cuda` or `cpu` |
 | `[asr] SPLIT_MIXED_BATCH` | `true` | Run timestamp and non-timestamp requests as separate GPU sub-calls |

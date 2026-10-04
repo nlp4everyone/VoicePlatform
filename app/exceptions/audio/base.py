@@ -33,3 +33,34 @@ class UnsupportedAudioFormatException(BaseException):
                 code=code
             )
         )
+
+
+class InvalidAudioException(BaseException):
+    """
+    Exception raised when an uploaded audio file cannot be decoded.
+
+    The file passed the format check but its content is corrupted, truncated or
+    contains no samples. It returns a standardized error response following
+    OpenAI-style API format.
+
+    Args:
+        reason (str): Why the audio could not be decoded
+        param (str): The parameter name that caused the error, defaults to "file"
+        type (str): Error type, defaults to "invalid_request_error"
+        code (str): Error code, defaults to "invalid_audio"
+    """
+
+    def __init__(self,
+                 reason: str,
+                 param: str = "file",
+                 type: str = "invalid_request_error",
+                 code: str = "invalid_audio"):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            response=BaseResponse(
+                message=f"Could not decode audio file: {reason}",
+                type=type,
+                params=param,
+                code=code
+            )
+        )

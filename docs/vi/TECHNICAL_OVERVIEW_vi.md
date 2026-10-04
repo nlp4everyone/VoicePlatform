@@ -76,7 +76,7 @@ Waveform đã giải mã và `timestamp_granularity` được truyền vào `bat
 
 Trong mỗi GPU call, `ParakeetRecognizer.transcribe()`:
 1. Sắp xếp tensor theo độ dài tăng dần — giảm padding thừa trong các sub-batch nội bộ của NeMo.
-2. Chạy `model.transcribe()` dưới `torch.cuda.amp.autocast()`.
+2. Chạy `model.transcribe()` dưới `torch.autocast(device_type="cuda")` (FP16, chỉ trên CUDA).
 3. Khôi phục thứ tự gốc trước khi trả về.
 
 ### Giai đoạn 5 — Định dạng response

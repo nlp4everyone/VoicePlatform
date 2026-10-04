@@ -142,7 +142,8 @@ class ParakeetRecognizer(BaseRecognizer):
 
         # Perform transcription with error handling
         try:
-            with torch.cuda.amp.autocast():
+            # Mixed precision only on CUDA; on CPU it stays off to keep FP32 numerics
+            with torch.autocast(device_type="cuda", enabled=self._device == "cuda"):
                 sorted_results = self.model.transcribe(audio, timestamps=enable_timestamps)
 
             # Restore original order

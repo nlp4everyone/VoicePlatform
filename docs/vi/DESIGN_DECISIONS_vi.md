@@ -110,7 +110,7 @@ Trước khi gọi `model.transcribe()`, tensor audio được sắp xếp theo 
 
 ### Mô tả
 
-GPU inference chạy dưới `torch.cuda.amp.autocast()`, tự động cast các phép toán phù hợp sang FP16 (hoặc BF16 trên Ampere+).
+GPU inference chạy dưới `torch.autocast(device_type="cuda")`, tự động cast các phép toán phù hợp sang FP16 (mặc định của autocast trên CUDA; muốn BF16 phải truyền rõ `dtype=torch.bfloat16`). Autocast chỉ bật khi recognizer chạy trên CUDA, nên inference trên CPU giữ FP32 và không phát warning.
 
 ### Ưu điểm
 
@@ -120,7 +120,7 @@ GPU inference chạy dưới `torch.cuda.amp.autocast()`, tự động cast các
 
 ### Nhược điểm
 
-- **Yêu cầu thiết bị** — không có tác dụng trên CPU; chỉ có lợi trên phần cứng CUDA.
+- **Yêu cầu thiết bị** — tắt trên CPU; chỉ có lợi trên phần cứng CUDA.
 
 ---
 

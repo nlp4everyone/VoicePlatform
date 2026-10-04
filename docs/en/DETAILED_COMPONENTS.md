@@ -59,7 +59,7 @@ Unknown model names raise `ValueError` at startup, so the deployment fails inste
 **`transcribe(audio, enable_timestamps, precision=3)`**
 - Normalizes single inputs to `[item]`
 - If batch is multi-item tensors: sorts ascending by length, records the permutation
-- Runs inference under `torch.cuda.amp.autocast()`
+- Runs inference under `torch.autocast(device_type="cuda")`, enabled only when the device is CUDA
 - Restores original order after inference
 - Returns `List[TranscriptionResult]`; timestamps are rounded to `precision` decimal places
 

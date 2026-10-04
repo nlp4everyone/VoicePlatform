@@ -76,7 +76,7 @@ The decoded waveform and `timestamp_granularity` are passed to `batched_transcri
 
 Within each GPU call, `ParakeetRecognizer.transcribe()`:
 1. Sorts tensors by length (ascending) — minimizes padding waste across NeMo's internal sub-batches.
-2. Runs `model.transcribe()` under `torch.cuda.amp.autocast()`.
+2. Runs `model.transcribe()` under `torch.autocast(device_type="cuda")` (FP16, CUDA only).
 3. Restores original order before returning.
 
 ### Stage 5 — Response formatting

@@ -59,7 +59,7 @@ Tên model không hợp lệ sẽ raise `ValueError` lúc khởi động, deploy
 **`transcribe(audio, enable_timestamps, precision=3)`**
 - Chuẩn hóa input đơn lẻ thành `[item]`
 - Batch nhiều tensor: sắp xếp tăng dần theo độ dài, ghi lại hoán vị
-- Chạy inference dưới `torch.cuda.amp.autocast()`
+- Chạy inference dưới `torch.autocast(device_type="cuda")`, chỉ bật khi device là CUDA
 - Khôi phục thứ tự gốc sau inference
 - Trả về `List[TranscriptionResult]`; timestamp được làm tròn đến `precision` chữ số thập phân
 

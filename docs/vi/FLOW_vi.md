@@ -132,7 +132,7 @@ app.py (serve run app.app:deployment)
     │       sắp xếp theo độ dài tensor tăng dần
     │       order = argsort(len)
     │
-    ├── with torch.cuda.amp.autocast():
+    ├── with torch.autocast(device_type="cuda", enabled=device == "cuda"):
     │       sorted_results = model.transcribe(audio, timestamps=enable_timestamps)
     │
     ├── khôi phục thứ tự gốc:

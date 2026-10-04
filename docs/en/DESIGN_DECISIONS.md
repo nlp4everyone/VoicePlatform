@@ -108,7 +108,7 @@ Before calling `model.transcribe()`, audio tensors are sorted by length (ascendi
 
 ### Description
 
-GPU inference runs under `torch.cuda.amp.autocast()`, which automatically casts eligible operations to FP16 (or BF16 on Ampere+).
+GPU inference runs under `torch.autocast(device_type="cuda")`, which automatically casts eligible operations to FP16 (autocast's CUDA default; BF16 would need an explicit `dtype=torch.bfloat16`). It is enabled only when the recognizer runs on CUDA, so CPU inference stays in FP32 and does not trigger warnings.
 
 ### Pros
 
@@ -118,7 +118,7 @@ GPU inference runs under `torch.cuda.amp.autocast()`, which automatically casts 
 
 ### Cons
 
-- **Device requirement** — has no effect on CPU; only beneficial on CUDA-capable hardware.
+- **Device requirement** — disabled on CPU; only beneficial on CUDA-capable hardware.
 
 ---
 

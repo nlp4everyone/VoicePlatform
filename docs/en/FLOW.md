@@ -132,7 +132,7 @@ app.py (serve run app.app:deployment)
     │       sort by tensor length ascending
     │       order = argsort(len)
     │
-    ├── with torch.cuda.amp.autocast():
+    ├── with torch.autocast(device_type="cuda", enabled=device == "cuda"):
     │       sorted_results = model.transcribe(audio, timestamps=enable_timestamps)
     │
     ├── restore original order:

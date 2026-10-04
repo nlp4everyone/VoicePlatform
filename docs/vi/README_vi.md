@@ -18,7 +18,7 @@ Dịch vụ xây dựng trên FastAPI và Ray Serve, cung cấp endpoint `/v1/au
 - Inference tăng tốc bằng GPU, nhanh hơn thời gian thực khoảng 47 lần trên một GPU RTX 3060 (xem Real-Time Factor ở mục Ví dụ)
 - Tự động gộp batch: Ray Serve gom các request đồng thời thành GPU batch (`MAX_BATCH_SIZE`, `BATCH_WAIT_TIMEOUT_S`)
 - Tách mixed-batch: request có/không có timestamp trong cùng batch chạy thành các GPU sub-call riêng, tránh transfer logit không cần thiết
-- Sắp xếp batch theo độ dài để giảm padding lãng phí, và AMP autocast (`torch.cuda.amp.autocast`) cho inference mixed-precision
+- Sắp xếp batch theo độ dài để giảm padding lãng phí, và AMP autocast (`torch.autocast`, chỉ trên CUDA) cho inference mixed-precision
 - Giải mã audio thẳng từ bytes bằng TorchCodec (mono 16 kHz trong một lượt FFmpeg) trên pool giải mã có giới hạn, và GPU executor đơn luồng riêng
 - Hỗ trợ đa replica: scale bằng cách đặt `NUM_REPLICAS` trong `config/config.toml`
 

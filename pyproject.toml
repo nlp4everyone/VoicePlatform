@@ -1,0 +1,43 @@
+[project]
+name = "voiceplatform-nvidia-asr"
+version = "0.1.0"
+description = "Private NVIDIA NeMo (Parakeet) ASR service on Ray Serve"
+readme = "README.md"
+requires-python = "==3.11.*"
+dependencies = [
+    # ASR model (NeMo 2.7.2 with ASR extras, used for Vietnamese speech recognition)
+    "nemo_toolkit[asr]==2.7.2",
+    # Components (transformers comes from NeMo, which requires 4.57.x)
+    "tiktoken==0.9.0",
+    # Language detection
+    "pycld2==0.42",
+    # CUDA
+    "Cython==3.2.0",
+    "cuda-python==13.0.2",
+    # Audio
+    "soundfile==0.13.0",
+    "torchaudio==2.11.0",
+    "torchcodec==0.11.1",
+    # Detect audio format
+    "python-magic==0.4.27",
+    # Serving
+    "ray[serve]==2.50.0",
+    # Pinned exact: FastAPI 0.137.0 switched app.routes to a lazy `_IncludedRouter`
+    # wrapper, and Starlette 1.0.0 did its own routing rewrite. ray==2.50.0's
+    # vendored get_asgi_route_name.py assumes plain Route/Mount with a `.path`
+    # attr, so either bump breaks it with AttributeError on every request.
+    # Bump once Ray Serve ships a fix for this.
+    "fastapi==0.136.3",
+    "starlette==0.52.1",
+    # protobuf 7.x removed FieldDescriptor.label, which ray==2.50.0's Serve config
+    # (_proto_to_dict) still reads, so deploy_applications() fails with AttributeError.
+    # 5.29.x is also the range nemo_toolkit 2.7.2 requires (protobuf~=5.29.5).
+    "protobuf~=5.29.5",
+    "python-multipart==0.0.20",
+    # Config
+    "toml==0.10.2",
+]
+
+[tool.uv]
+# Application, not a library: install the dependencies only
+package = false

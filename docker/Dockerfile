@@ -36,26 +36,26 @@ RUN apt-get update && apt-get install -y \
 # =============================================================================
 # Python Package Management Setup
 # =============================================================================
-# Install and upgrade pip for Python 3.11
-RUN python3.11 -m ensurepip --upgrade || (curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11)
+# uv replaces pip: it installs the exact versions pinned in uv.lock
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /usr/local/bin/
 
-# Upgrade pip, setuptools, and wheel to latest versions
-RUN python3.11 -m pip install --upgrade pip setuptools wheel
+# Use the system Python 3.11 and keep the virtualenv outside /app so that
+# `COPY . /app` below never overwrites it. Putting its bin dir on PATH lets the
+# CMD call `ray` and `serve` directly.
+ENV UV_PYTHON=python3.11 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
 
 # =============================================================================
-# Core Dependencies Installation
+# Dependencies Installation
 # =============================================================================
-# Install NVIDIA NeMo Toolkit for ASR capabilities
-# Version 2.7.2 with ASR features for Vietnamese speech recognition
-RUN python3.11 -m pip install nemo_toolkit['asr']==2.7.2
-
-# Install application-specific component dependencies
-COPY requirements/requirements_components.txt /app/requirements_components.txt
-RUN python3.11 -m pip install -r /app/requirements_components.txt
-
-# Install Ray Serve and serving infrastructure dependencies
-COPY requirements/requirements_serving.txt /app/requirements_serving.txt
-RUN python3.11 -m pip install -r /app/requirements_serving.txt
+# Install NeMo (ASR), Ray Serve and all other dependencies from the lockfile.
+# Only the dependency manifests are copied first so this layer stays cached
+# until pyproject.toml or uv.lock change.
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --frozen --no-install-project --no-dev
 
 # =============================================================================
 # Application Deployment

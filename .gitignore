@@ -11,3 +11,4 @@ app/services/asr/nemo/__pycache__/
 app/services/deployments/__pycache__/
 app/utils/__pycache__/
 app/utils/language_detect/__pycache__/
+.venv

@@ -3,3 +3,6 @@ venv
 .git
 .venv
 Note.txt
+models
+results
+note.txt

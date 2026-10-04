@@ -3,7 +3,6 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: asr_serve
     ports:
       - "${RAY_FASTAPI_PORT:-8000}:8000"   # Inference API
       - "${RAY_DASHBOARD_PORT:-8265}:8265" # Dashboard API

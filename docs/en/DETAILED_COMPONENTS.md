@@ -48,7 +48,7 @@ Wraps `nemo_asr.models.ASRModel` with sorting, autocast, and structured output.
 - `nvidia/parakeet-ctc-0.6b-vi`
 - `nvidia/parakeet-tdt-0.6b-v3`
 
-Unknown model names fall back to `SUPPORTED_MODELS[0]`.
+Unknown model names raise `ValueError` at startup, so the deployment fails instead of silently serving another model.
 
 **Initialization:**
 1. Resolves device: `"auto"` → `"cuda"` if `torch.cuda.is_available()` else `"cpu"`

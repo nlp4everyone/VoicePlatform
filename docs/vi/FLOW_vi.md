@@ -31,7 +31,7 @@ app.py (serve run app.app:deployment)
             │       ├── logger.info("Loading ASR model ...")
             │       ├── ParakeetRecognizer(model_name, device)
             │       │       │
-            │       │       ├── kiểm tra model_name → fallback về SUPPORTED_MODELS[0] nếu không hợp lệ
+            │       │       ├── kiểm tra model_name → raise ValueError nếu không hợp lệ
             │       │       ├── xác định device: "auto" → cuda nếu có, không thì cpu
             │       │       ├── nemo_asr.models.ASRModel.from_pretrained(model_name)
             │       │       │       tải từ cache HF_HOME hoặc download

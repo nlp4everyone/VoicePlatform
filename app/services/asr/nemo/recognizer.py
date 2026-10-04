@@ -52,15 +52,19 @@ class ParakeetRecognizer(BaseRecognizer):
                              Defaults to Vietnamese Parakeet CTC model.
             device (Literal["cuda","cpu","auto"]): Device to use for inference.
                                                    "auto" automatically selects CUDA if available.
+
+        Raises:
+            ValueError: If model_name is not in SUPPORTED_MODELS.
+            RuntimeError: If the pretrained model fails to load.
         """
         # Initialize parent class with model name
         super().__init__(model_name = model_name)
         
-        # Validate model name is supported
+        # Fail fast on an unsupported model instead of silently loading another one,
+        # which would make every request using the configured name return 404
         if model_name not in SUPPORTED_MODELS:
-            logger.error(f"Model '{model_name}' is not supported. Supported models: {SUPPORTED_MODELS}")
-            self._model_name = SUPPORTED_MODELS[0]
-            logger.warning(f"Falling back to default ASR model: {self._model_name}")
+            raise ValueError(f"Unsupported ASR model '{model_name}'. "
+                             f"Supported models: {SUPPORTED_MODELS}")
 
         # Define device - auto-detect CUDA availability if "auto" is specified
         if device == "auto":

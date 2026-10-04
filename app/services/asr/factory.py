@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Literal
 from app.schema.transcription.base.recognizer import BaseRecognizer
 from app.services.asr.nemo import ParakeetRecognizer
 import logging
@@ -21,13 +21,13 @@ class RecognizerFactory:
     def create(self,
                model_name: str,
                device :Literal["cuda","cpu","auto"] = "auto",
-               **kwargs) -> Union[BaseRecognizer, None]:
+               **kwargs) -> BaseRecognizer:
         """
         Create a recognizer instance based on the specified model.
         
         This method creates the appropriate recognizer instance with the
         specified device configuration. Model validation is handled by the
-        recognizer class with fallback to a default model if needed.
+        recognizer class, which rejects unsupported models.
         
         Args:
             model_name (str): Identifier of the recognizer model to create.
@@ -37,17 +37,17 @@ class RecognizerFactory:
                      (currently not used but reserved for future extensions)
             
         Returns:
-            Union[BaseRecognizer, None]: Configured recognizer instance.
-                                         Returns None only if model is not supported.
+            BaseRecognizer: Configured recognizer instance.
+
+        Raises:
+            ValueError: If the model is not supported.
+            RuntimeError: If the model fails to load.
             
         Note:
             This method maintains a singleton pattern - only one recognizer
             instance is stored at a time. Subsequent calls will replace the
             previous instance.
         """
-        if not model_name.startswith("nvidia/parakeet"):
-            logger.error(f"Unsupported model: '{model_name}', falling back to default")
-
         logger.info(f"Loading ASR model '{model_name}' on {device.upper()} ...")
         self._recognizer = ParakeetRecognizer(model_name=model_name, device=device)
         logger.info(f"ASR model '{self._recognizer.model_name}' loaded successfully on {self._recognizer._device.upper()}")

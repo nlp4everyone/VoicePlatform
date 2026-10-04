@@ -48,7 +48,7 @@ Bọc `nemo_asr.models.ASRModel` với sorting, autocast, và structured output.
 - `nvidia/parakeet-ctc-0.6b-vi`
 - `nvidia/parakeet-tdt-0.6b-v3`
 
-Tên model không hợp lệ sẽ fallback về `SUPPORTED_MODELS[0]`.
+Tên model không hợp lệ sẽ raise `ValueError` lúc khởi động, deployment dừng thay vì âm thầm chạy model khác.
 
 **Khởi tạo:**
 1. Xác định device: `"auto"` → `"cuda"` nếu `torch.cuda.is_available()`, không thì `"cpu"`

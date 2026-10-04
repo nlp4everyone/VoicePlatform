@@ -31,7 +31,7 @@ app.py (serve run app.app:deployment)
             │       ├── logger.info("Loading ASR model ...")
             │       ├── ParakeetRecognizer(model_name, device)
             │       │       │
-            │       │       ├── validate model_name → fallback to SUPPORTED_MODELS[0] if unknown
+            │       │       ├── validate model_name → raise ValueError if unknown
             │       │       ├── resolve device: "auto" → cuda if available, else cpu
             │       │       ├── nemo_asr.models.ASRModel.from_pretrained(model_name)
             │       │       │       downloads / loads from HF_HOME cache

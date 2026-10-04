@@ -80,7 +80,7 @@ class ASRService:
         Initialize the ASR service.
 
         Sets up the ASR model.
-        Raises RuntimeError if model initialization fails.
+        Raises ValueError for an unsupported model and RuntimeError if loading fails.
         """
         # Ray Serve calls configure_component_logger() after module import,
         # which may reset ray.serve to WARNING. Re-apply INFO here so factory
@@ -90,10 +90,6 @@ class ASRService:
         # Initialize ASR model using factory pattern with configuration
         self._asr_model = RecognizerFactory.create(model_name=ASR_MODEL_NAME,
                                                    device=ASR_DEVICE)
-
-        # Validate model initialization
-        if self._asr_model is None:
-            raise RuntimeError(f"Failed to initialize ASR model: {ASR_MODEL_NAME}")
 
         logger.info(
             f"ASRService ready | replicas={NUM_REPLICAS} "

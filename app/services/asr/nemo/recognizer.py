@@ -181,10 +181,15 @@ class ParakeetRecognizer(BaseRecognizer):
             return [TranscriptionResult(text=transcriptions[index],
                                         segments=detailed_segment_timestamps[index],
                                         words=detailed_word_timestamps[index]) for index in range(len(transcriptions))]
-        except Exception as e:
-            # Log detailed error information for debugging
-            logger.error(f"Error during transcription: {str(e)}")
-            logger.error(f"Audio paths: {audio}")
-            logger.error(f"Device: {self._device}")
+        except Exception:
+            # Log batch metadata, not the tensors themselves: printing tensors floods
+            # the log with truncated sample values. Tensors are 16 kHz waveforms from
+            # load_audio_from_bytes, so their length is reported in seconds.
+            items = [round(item.shape[-1] / 16000, 2) if isinstance(item, torch.Tensor) else item
+                     for item in audio]
+            # logger.exception keeps the traceback, which str(e) alone loses
+            logger.exception(f"Transcription failed | device={self._device} "
+                             f"batch_size={len(audio)} timestamps={enable_timestamps} "
+                             f"durations_s={items}")
             raise
 

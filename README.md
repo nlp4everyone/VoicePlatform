@@ -14,6 +14,11 @@ The model is served with **vLLM** behind OpenAI-compatible endpoints, and [**Whi
 - Any format ffmpeg can decode (wav, mp3, ...) is accepted, no client-side conversion needed
 - `float32` inference, the precision FunAudioLLM validated for transcription fidelity
 
+### 🚀 Performance Optimizations
+- GPU-accelerated inference with vLLM, roughly 37x faster than real time on a single RTX 3060 (see Real-Time Factor under Examples)
+- Configurable GPU memory utilization and context length (`--gpu-memory-utilization`, `--max-model-len`)
+- Concurrent request handling through vLLM batching
+
 ### 🔒 Privacy & Security
 - Complete local deployment - no audio leaves your infrastructure
 - No API keys or external service dependencies required
@@ -64,6 +69,7 @@ The model is served with **vLLM** behind OpenAI-compatible endpoints, and [**Whi
 2. **🛠️ Software Dependencies**
    - 🐳 **Docker and Docker Compose**
    - 🎮 **NVIDIA Container Toolkit** (for GPU support)
+   - ⚡ **NVIDIA driver** compatible with the CUDA version of the `vllm/vllm-openai:v0.24.0` image (a host CUDA Toolkit is not required, CUDA ships inside the image)
 
 <br />
 
@@ -139,6 +145,18 @@ The `examples/audio_transcription_example.py` shows how to:
 ```bash
 python examples/audio_transcription_example.py
 ```
+
+### ⏱️ Real-Time Factor (RTF)
+
+RTF = processing time ÷ audio duration. A value below 1 means faster than real time.
+
+Measured with the OpenAI SDK (`client.audio.transcriptions.create`) on `resources/sample_vi.mp3` (7.81 s of audio): one warm-up request, then 5 timed requests.
+
+| Model | GPU | Audio | Mean time | RTF (mean) | RTF (min – max) |
+|-------|-----|-------|-----------|------------|-----------------|
+| `FunAudioLLM/Fun-ASR-MLT-Nano-2512` | NVIDIA RTX 3060 | 7.81 s | 0.209 s | 0.027 | 0.026 – 0.028 |
+
+> ℹ️ Times are end-to-end over localhost (upload + decode + inference) with the default flags from `docker-compose.yml` (`float32`, `--enforce-eager`, `--gpu-memory-utilization 0.7`); the first (warm-up) request was much slower (2.09 s). RTF depends on the model, GPU and concurrent load, so re-measure on your own hardware.
 
 ## 🌊 Streaming Transcription (SSE)
 
@@ -217,6 +235,7 @@ vLLM serving flags are set in `docker-compose.yml` (`fun-asr-mlt` service):
 - [x] 🚀 Fun-ASR-MLT-Nano served on vLLM
 - [x] 🔄 One-time model download and conversion via `make model`
 - [x] 📝 Example requests (batch, SSE streaming, base64)
+- [x] ⏱️ RTF measurement on the sample audio
 
 <br />
 

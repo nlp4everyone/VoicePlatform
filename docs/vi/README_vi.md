@@ -61,7 +61,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 git clone https://github.com/nlp4everyone/VoicePlatform.git
 cd VoicePlatform/
 git fetch && git checkout ray/nvidia_asr
-cp .env.sample .env
+make env   # creates .env from .env.sample
 ```
 
 Chỉnh `config/config.toml` phù hợp với phần cứng:
@@ -80,8 +80,12 @@ ASR_DEVICE = "auto"
 ```
 
 ```bash
-bash run_service.sh
+make up       # build và chạy nền (make start = chạy foreground)
+make health   # kiểm tra API
+make logs     # xem log service
 ```
+
+Các target khác: `make down`, `make restart`, `make ps`, `make clean`. Chạy `make help` để xem đầy đủ.
 
 ```python
 from openai import OpenAI

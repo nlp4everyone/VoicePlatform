@@ -70,9 +70,9 @@ Tên model không hợp lệ sẽ raise `ValueError` lúc khởi động, deploy
 ## Audio Utils (`app/utils/audio/io.py`)
 
 **`load_audio_from_bytes(audio_bytes, target_sr=16000) → (Tensor, float)`**
-- `torchaudio.load(BytesIO(audio_bytes))` — hỗ trợ MP3, WAV, FLAC, OGG và các định dạng torchaudio khác
-- Mono: `waveform[0]` nếu 1 channel, `waveform.mean(dim=0)` nếu nhiều channel
-- Resample về target_sr nếu `sr != target_sr` dùng `torchaudio.transforms.Resample` đã cache (key `(sr_src, sr_tgt)` qua `lru_cache(maxsize=8)`)
+- `torchcodec.decoders.AudioDecoder(audio_bytes, sample_rate=target_sr, num_channels=1)` — hỗ trợ MP3, WAV, FLAC, OGG và các định dạng FFmpeg khác
+- Truyền `bytes` (không phải `BytesIO`) để TorchCodec giải mã từ bộ nhớ mà không gọi ngược hàm đọc của Python
+- FFmpeg gộp về mono và resample về `target_sr` trong cùng một lượt
 - Trả về `(waveform, duration_seconds)`
 - Raise `InvalidAudioException` khi giải mã lỗi hoặc audio không có sample nào
 

@@ -19,7 +19,7 @@ The service is built with FastAPI and Ray Serve and offers an OpenAI-compatible 
 - Automatic request batching: Ray Serve groups concurrent requests into GPU batches (`MAX_BATCH_SIZE`, `BATCH_WAIT_TIMEOUT_S`)
 - Mixed-batch splitting: timestamp and non-timestamp requests in one batch run as separate GPU sub-calls, avoiding unnecessary logit transfers
 - Sort-by-length batching to minimize padding waste, and AMP autocast (`torch.cuda.amp.autocast`) for mixed-precision inference
-- Cached resampler (`torchaudio.transforms.Resample` cached per `(src_sr, tgt_sr)` pair) and a dedicated single-thread GPU executor
+- Audio decoded straight from bytes by TorchCodec (mono 16 kHz in one FFmpeg pass) on a bounded decode pool, and a dedicated single-thread GPU executor
 - Multi-replica support: scale by setting `NUM_REPLICAS` in `config/config.toml`
 
 ### 🔒 Privacy & Security

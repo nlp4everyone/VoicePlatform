@@ -1,15 +1,11 @@
 from typing import Tuple, Union
-from functools import lru_cache
+from torchcodec.decoders import AudioDecoder
 import soundfile as sf
-import io, torch, torchaudio, magic, logging
+import io, torch, magic, logging
 from app.exceptions.audio import InvalidAudioException
 magic_mime = magic.Magic(mime=True)
 logger = logging.getLogger("ray.serve")
 
-
-@lru_cache(maxsize=8)
-def _get_resampler(sr_src: int, sr_tgt: int) -> torchaudio.transforms.Resample:
-    return torchaudio.transforms.Resample(sr_src, sr_tgt)
 
 def estimate_audio_duration(audio_bytes: bytes) -> float:
     """
@@ -40,9 +36,12 @@ def load_audio_from_bytes(audio_bytes: bytes,
     Raises:
         InvalidAudioException: If the audio cannot be decoded or has no samples
     """
-    buffer = io.BytesIO(audio_bytes)
     try:
-        waveform, sr = torchaudio.load(buffer)
+        # Pass the raw bytes, not a BytesIO: torchcodec then decodes straight from
+        # memory instead of calling back into Python (and taking the GIL) for every
+        # read. FFmpeg also downmixes to mono and resamples in the same pass.
+        decoder = AudioDecoder(audio_bytes, sample_rate=target_sr, num_channels=1)
+        waveform = decoder.get_all_samples().data[0]
     except Exception as e:
         # The decoder error names internal objects, so log it and keep the client message generic
         logger.warning(f"Audio decoding failed: {e}")
@@ -51,11 +50,6 @@ def load_audio_from_bytes(audio_bytes: bytes,
     # A valid header with no samples would fail later inside the model
     if waveform.numel() == 0:
         raise InvalidAudioException(reason="audio contains no samples")
-
-    waveform = waveform[0] if waveform.shape[0] == 1 else waveform.mean(dim=0)
-
-    if sr != target_sr:
-        waveform = _get_resampler(sr, target_sr)(waveform)
 
     duration = round(waveform.shape[-1] / target_sr, 3)
     return waveform, duration

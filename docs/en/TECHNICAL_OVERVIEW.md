@@ -55,9 +55,7 @@
 ### Stage 2 — Audio decoding (per request, CPU)
 
 `load_audio_from_bytes()` runs on the replica's dedicated decode pool (`ThreadPoolExecutor(max_workers=DECODE_WORKERS)`), so concurrent requests decode in parallel without blocking the event loop:
-- `torchaudio.load` → waveform + sample rate
-- Downmix to mono (mean over channels)
-- Resample to 16kHz if needed (cached `Resample` transform via `lru_cache`)
+- `AudioDecoder(audio_bytes, sample_rate=16000, num_channels=1)` (TorchCodec) decodes straight from the bytes, downmixing to mono and resampling to 16kHz in one FFmpeg pass
 - Returns `(waveform: torch.Tensor, duration: float)`
 
 Decoding happens before batching, so a corrupted or empty file raises `InvalidAudioException` (400) for that request only. Raw bytes are freed immediately after decoding.

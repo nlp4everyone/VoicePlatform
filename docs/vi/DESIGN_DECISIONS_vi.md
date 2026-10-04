@@ -124,20 +124,21 @@ GPU inference chạy dưới `torch.cuda.amp.autocast()`, tự động cast các
 
 ---
 
-## 7. Cached Resampler (`lru_cache`)
+## 7. Giải mã thẳng từ bytes bằng TorchCodec
 
 ### Mô tả
 
-Các instance `torchaudio.transforms.Resample(sr_src, sr_tgt)` được cache theo cặp `(sr_src, sr_tgt)` với `lru_cache(maxsize=8)`.
+`load_audio_from_bytes()` truyền thẳng bytes upload vào `torchcodec.decoders.AudioDecoder(audio_bytes, sample_rate=16000, num_channels=1)`. FFmpeg giải mã, gộp về mono và resample về 16 kHz trong cùng một lượt.
 
 ### Ưu điểm
 
-- **Loại bỏ việc tạo lại nhiều lần** — tạo `Resample` transform liên quan đến cấp phát filter kernel. Cache giúp các lần gọi tiếp theo với cùng cặp tốc độ mẫu gần như miễn phí.
-- **Overhead thấp** — hầu hết deployment chỉ có 1–2 cặp tốc độ mẫu duy nhất; `maxsize=8` là quá đủ.
+- **Không gọi ngược Python khi giải mã** — với `bytes`, TorchCodec đọc thẳng từ bộ nhớ. `BytesIO` (thứ `torchaudio.load` nhận trước đây) bị coi là object dạng file, nên decoder C++ phải gọi ngược vào Python, và giữ GIL, cho mỗi lần đọc, làm giảm khả năng chạy song song của các luồng giải mã.
+- **Ít bước hơn** — không cần `torchaudio.transforms.Resample` hay phép mean theo channel; từ TorchAudio 2.9, `torchaudio.load` vốn đã gọi TorchCodec bên dưới.
+- **Đã đo** — với 16 file MP3 stereo 48 kHz dài 60 s, giải mã mất 0.25 s thay vì 0.34 s với 4 luồng (0.90 s thay vì 1.03 s với 1 luồng), kết quả giống hệt (tương quan 1.0000).
 
 ### Nhược điểm
 
-- **Giữ memory vô thời hạn** — transform được cache không bao giờ bị thu hồi trong vòng đời tiến trình (tối đa `maxsize` entry). Với 8 entry điều này không đáng kể.
+- **Phụ thuộc trực tiếp TorchCodec** — luồng giải mã giờ dùng API của TorchCodec thay vì wrapper `torchaudio.load`.
 
 ---
 

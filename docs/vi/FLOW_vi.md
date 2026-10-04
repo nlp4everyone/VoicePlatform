@@ -72,11 +72,10 @@ app.py (serve run app.app:deployment)
     ├── run_in_executor(self._decode_executor, load_audio_from_bytes, audio_bytes)
     │   [giải mã CPU, theo từng request]
     │   load_audio_from_bytes(audio_bytes, target_sr=16000):
-    │       torchaudio.load(BytesIO) → waveform, sr
+    │       AudioDecoder(audio_bytes, sample_rate=16000, num_channels=1)
+    │           .get_all_samples().data[0] → waveform mono 16 kHz  [một lượt FFmpeg]
     │           lỗi giải mã → raise InvalidAudioException  (400, chỉ request này)
     │       không có sample? → raise InvalidAudioException
-    │       mono: waveform[0] nếu 1 channel, waveform.mean(dim=0) nếu nhiều channel
-    │       sr != 16000? → _get_resampler(sr, 16000)(waveform)  [lru_cache]
     │       trả về (waveform: Tensor[T], duration: float)
     │
     ├── audio_bytes = None   ← giải phóng raw bytes ngay

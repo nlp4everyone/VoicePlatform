@@ -70,9 +70,9 @@ Unknown model names raise `ValueError` at startup, so the deployment fails inste
 ## Audio Utils (`app/utils/audio/io.py`)
 
 **`load_audio_from_bytes(audio_bytes, target_sr=16000) → (Tensor, float)`**
-- `torchaudio.load(BytesIO(audio_bytes))` — supports MP3, WAV, FLAC, OGG, and other torchaudio-supported formats
-- Mono: `waveform[0]` for single-channel, `waveform.mean(dim=0)` for multi-channel
-- Resamples if `sr != target_sr` using a cached `torchaudio.transforms.Resample` (keyed by `(sr_src, sr_tgt)` via `lru_cache(maxsize=8)`)
+- `torchcodec.decoders.AudioDecoder(audio_bytes, sample_rate=target_sr, num_channels=1)` — supports MP3, WAV, FLAC, OGG and other FFmpeg formats
+- Passing `bytes` (not a `BytesIO`) lets TorchCodec decode from memory without Python read callbacks
+- FFmpeg downmixes to mono and resamples to `target_sr` in the same pass
 - Returns `(waveform, duration_seconds)`
 - Raises `InvalidAudioException` when decoding fails or the audio has no samples
 

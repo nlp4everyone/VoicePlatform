@@ -122,20 +122,21 @@ GPU inference runs under `torch.cuda.amp.autocast()`, which automatically casts 
 
 ---
 
-## 7. Cached Resampler (`lru_cache`)
+## 7. Decoding from Raw Bytes with TorchCodec
 
 ### Description
 
-`torchaudio.transforms.Resample(sr_src, sr_tgt)` instances are cached by `(sr_src, sr_tgt)` pair with `lru_cache(maxsize=8)`.
+`load_audio_from_bytes()` passes the uploaded bytes straight to `torchcodec.decoders.AudioDecoder(audio_bytes, sample_rate=16000, num_channels=1)`. FFmpeg decodes, downmixes to mono and resamples to 16 kHz in one pass.
 
 ### Pros
 
-- **Eliminates repeated construction** — creating a `Resample` transform involves allocating a filter kernel. Caching it makes subsequent calls with the same rate pair effectively free.
-- **Low overhead** — most deployments see only 1–2 unique rate pairs; `maxsize=8` is more than sufficient.
+- **No Python callbacks during decode** — given `bytes`, TorchCodec reads straight from memory. A `BytesIO` (what `torchaudio.load` received before) is treated as a file-like object, so the C++ decoder calls back into Python, and takes the GIL, for every read, which limits how well the decode threads run in parallel.
+- **Fewer steps** — no separate `torchaudio.transforms.Resample` or channel mean; `torchaudio.load` already delegates to TorchCodec since TorchAudio 2.9.
+- **Measured** — on 16 × 60 s stereo 48 kHz MP3s, decoding took 0.25 s instead of 0.34 s with 4 threads (0.90 s instead of 1.03 s with 1 thread), with identical output (correlation 1.0000).
 
 ### Cons
 
-- **Memory held indefinitely** — cached transforms are never evicted during the process lifetime (only up to `maxsize` entries). For 8 entries this is negligible.
+- **Direct TorchCodec dependency** — the decode path now depends on the TorchCodec API instead of the `torchaudio.load` wrapper.
 
 ---
 

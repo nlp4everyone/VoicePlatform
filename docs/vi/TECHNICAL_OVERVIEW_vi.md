@@ -55,9 +55,7 @@
 ### Giai đoạn 2 — Giải mã audio (theo từng request, CPU)
 
 `load_audio_from_bytes()` chạy trên pool giải mã riêng của replica (`ThreadPoolExecutor(max_workers=DECODE_WORKERS)`), nên các request đồng thời được giải mã song song mà không chặn event loop:
-- `torchaudio.load` → waveform + sample rate
-- Chuyển về mono (mean theo channel)
-- Resample về 16kHz nếu cần (dùng `Resample` transform đã cache qua `lru_cache`)
+- `AudioDecoder(audio_bytes, sample_rate=16000, num_channels=1)` (TorchCodec) giải mã thẳng từ bytes, gộp về mono và resample về 16kHz trong một lượt FFmpeg
 - Trả về `(waveform: torch.Tensor, duration: float)`
 
 Việc giải mã diễn ra trước khi gom batch, nên file hỏng hoặc rỗng chỉ khiến request đó nhận `InvalidAudioException` (400). Raw bytes được giải phóng ngay sau khi giải mã.

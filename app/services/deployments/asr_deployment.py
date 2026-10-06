@@ -37,9 +37,8 @@ for _nemo_logger in ("nemo", "nemo_logger", "lightning", "pytorch_lightning",
                      "filelock", "datasets", "huggingface_hub"):
     logging.getLogger(_nemo_logger).setLevel(logging.ERROR)
 
-# Explicitly set to INFO in the actor process — ray.init(logging_level=WARNING)
-# in the driver does not carry over here, but Ray worker setup may still
-# override the level. Setting it here ensures INFO logs are visible in actors.
+# Explicitly set to INFO in the actor process — the driver's logging setup does
+# not carry over here, and Ray worker setup may still override the level. Setting it here ensures INFO logs are visible in actors.
 logging.getLogger("ray.serve").setLevel(logging.INFO)
 logger = logging.getLogger("ray.serve")
 
@@ -59,12 +58,9 @@ asr_app.add_exception_handler(TranscriptedModelNotFoundException, common_excepti
 asr_app.add_exception_handler(UnsupportedAudioFormatException, common_exception_handler)
 asr_app.add_exception_handler(InvalidAudioException, common_exception_handler)
 
-@serve.deployment(ray_actor_options={"num_gpus": NUM_GPUS,
-                                     # Reserve a CPU per decode thread; Ray also sets
-                                     # OMP_NUM_THREADS from this value
-                                     "num_cpus": DECODE_WORKERS},
-                  num_replicas=NUM_REPLICAS,
-                  max_ongoing_requests=MAX_ONGOING_REQUESTS)
+# Replica count, GPUs, CPUs and max_ongoing_requests are set in
+# config/serve.yaml, not here.
+@serve.deployment
 @serve.ingress(asr_app)
 class ASRService:
     """
@@ -75,9 +71,7 @@ class ASRService:
     transcription formats based on client requirements.
 
     The deployment is configured with:
-    - GPU resources based on NUM_GPUS configuration
-    - Multiple replicas for scalability (NUM_REPLICAS)
-    - Maximum concurrent requests limit (MAX_ONGOING_REQUESTS)
+    - GPU, CPU, replica count and request limit set in config/serve.yaml
     - One CPU per audio decode thread (DECODE_WORKERS)
     """
 
@@ -98,9 +92,7 @@ class ASRService:
                                                    device=ASR_DEVICE)
 
         logger.info(
-            f"ASRService ready | replicas={NUM_REPLICAS} "
-            f"max_ongoing_requests={MAX_ONGOING_REQUESTS} "
-            f"max_batch_size={MAX_BATCH_SIZE} "
+            f"ASRService ready | max_batch_size={MAX_BATCH_SIZE} "
             f"decode_workers={DECODE_WORKERS}"
         )
 

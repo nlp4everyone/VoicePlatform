@@ -1,0 +1,24 @@
+# Ray Serve config, used by `serve run config/serve.yaml` (or `serve deploy`).
+# Owns the HTTP endpoint and the deployment's scaling and resources.
+# Model and batching settings stay in config/config.toml.
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
+logging_config:
+  log_level: INFO
+
+applications:
+  - name: asr
+    route_prefix: /
+    import_path: app.app:deployment
+    deployments:
+      - name: ASRService
+        num_replicas: 1
+        max_ongoing_requests: 16
+        ray_actor_options:
+          num_gpus: 1
+          # One CPU per audio decode thread; keep >= DECODE_WORKERS in config.toml
+          num_cpus: 4

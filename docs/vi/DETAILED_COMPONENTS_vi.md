@@ -4,11 +4,11 @@
 
 Deployment của Ray Serve, sở hữu FastAPI ingress và logic xử lý batch.
 
-**Cấu hình deployment** (qua `@serve.deployment`):
-- `num_replicas=NUM_REPLICAS` — số replica độc lập; mỗi replica giữ một bản sao model
-- `num_gpus=NUM_GPUS` — tài nguyên GPU dành riêng mỗi replica
-- `num_cpus=DECODE_WORKERS` — mỗi luồng giải mã audio được dành một CPU
-- `max_ongoing_requests=MAX_ONGOING_REQUESTS` — số request đang xử lý tối đa mỗi replica trước khi Ray Serve áp dụng backpressure
+**Cấu hình deployment** (đặt trong `config/serve.yaml`, không đặt ở decorator):
+- `num_replicas` — số replica độc lập; mỗi replica giữ một bản sao model
+- `ray_actor_options.num_gpus` — tài nguyên GPU dành riêng mỗi replica
+- `ray_actor_options.num_cpus` — mỗi luồng giải mã audio được dành một CPU (giữ ≥ `DECODE_WORKERS`)
+- `max_ongoing_requests` — số request đang xử lý tối đa mỗi replica trước khi Ray Serve áp dụng backpressure
 
 **`__init__()`**
 - Áp dụng lại log level INFO cho `ray.serve` (Ray Serve reset trong quá trình khởi tạo actor)

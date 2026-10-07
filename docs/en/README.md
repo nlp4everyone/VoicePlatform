@@ -20,7 +20,7 @@ The service is built with FastAPI and Ray Serve and offers an OpenAI-compatible 
 - Mixed-batch splitting: timestamp and non-timestamp requests in one batch run as separate GPU sub-calls, avoiding unnecessary logit transfers
 - Sort-by-length batching to minimize padding waste, and AMP autocast (`torch.autocast`, CUDA only) for mixed-precision inference
 - Audio decoded straight from bytes by TorchCodec (mono 16 kHz in one FFmpeg pass) on a bounded decode pool, and a dedicated single-thread GPU executor
-- Multi-replica support: scale by setting `NUM_REPLICAS` in `config/config.toml`
+- Multi-replica support: scale by setting `num_replicas` in `config/serve.yaml`
 
 ### 🔒 Privacy & Security
 - Complete local deployment - no audio leaves your infrastructure
@@ -84,7 +84,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 1. **💻 Hardware Requirements**
    - 🖥️ **CPU**: x86_64 (AVX2 support recommended)
-   - 🧠 **RAM**: 16GB minimum (the container may use up to 16GB of shared memory)
+   - 🧠 **RAM**: 16GB minimum; the container is capped at 24GB (`mem_limit`), including 16GB of shared memory and the Ray object store
    - 🎮 **GPU**: NVIDIA GPU with CUDA support (recommended for optimal performance)
    - 💾 **Storage**: SSD recommended; the image is large (~30GB with NeMo and PyTorch) plus the model cache
 
@@ -121,9 +121,6 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 4. **Configure the serving parameters** in `config/config.toml` to match your hardware (see Configuration below):
    ```toml
    [serving]
-   NUM_GPUS = 1
-   NUM_REPLICAS = 1
-   MAX_ONGOING_REQUESTS = 16
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
    DECODE_WORKERS = 4
@@ -203,7 +200,7 @@ Measured with the OpenAI SDK (`client.audio.transcriptions.create`) on `resource
 | `nvidia/parakeet-ctc-0.6b-vi` | NVIDIA RTX 3060 | Text only | 7.63 s | 0.162 s | 0.021 | 0.021 – 0.022 |
 | `nvidia/parakeet-ctc-0.6b-vi` | NVIDIA RTX 3060 | Word timestamps | 7.63 s | 0.192 s | 0.025 | 0.024 – 0.026 |
 
-> ℹ️ Times are end-to-end over localhost (upload + decode + inference) with `NUM_REPLICAS=1` and the defaults from `config/config.toml`; the first (warm-up) request took 0.177 s. RTF depends on the model, GPU and concurrent load, so re-measure on your own hardware.
+> ℹ️ Times are end-to-end over localhost (upload + decode + inference) with `num_replicas=1` and the defaults from `config/config.toml`; the first (warm-up) request took 0.177 s. RTF depends on the model, GPU and concurrent load, so re-measure on your own hardware.
 
 ## 🚦 Concurrent Requests
 
@@ -232,13 +229,10 @@ Sample audio files are included in `resources/` (`sample_vi.wav` for Vietnamese,
 
 ## 🎛️ Serving Parameters
 
-Serving behavior is set in `config/config.toml`. Changes take effect after `make restart`.
+Model and batching parameters are set in `config/config.toml`. Replica count, GPU/CPU, `max_ongoing_requests` and host/port live in `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Changes take effect after `make restart`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `[serving] NUM_GPUS` | `1` | GPUs reserved per replica (fractions such as `0.5` let replicas share a GPU) |
-| `[serving] NUM_REPLICAS` | `1` | Number of model replicas |
-| `[serving] MAX_ONGOING_REQUESTS` | `16` | Maximum in-flight requests per replica |
 | `[serving] MAX_BATCH_SIZE` | `8` | Maximum number of requests grouped into one GPU batch |
 | `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | How long a batch waits to fill before it is dispatched |
 | `[serving] DECODE_WORKERS` | `4` | Audio decode threads per replica; also reserved as the replica's Ray `num_cpus` |

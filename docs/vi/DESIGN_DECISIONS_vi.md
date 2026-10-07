@@ -12,7 +12,7 @@ Model ASR được phục vụ qua **Ray Serve** thay vì một tiến trình Fa
 
 ### Ưu điểm
 
-- **Scale đa replica** — đặt `NUM_REPLICAS > 1` để chạy nhiều bản sao model độc lập trên nhiều GPU mà không cần thay đổi code.
+- **Scale đa replica** — đặt `num_replicas > 1` trong `config/serve.yaml` để chạy nhiều bản sao model độc lập trên nhiều GPU mà không cần thay đổi code.
 - **Auto-batching có sẵn** — `@serve.batch` gom các request đồng thời trước GPU call, không cần tự quản lý queue.
 - **Cô lập tài nguyên GPU** — mỗi replica khai báo `num_gpus` qua `ray_actor_options`; Ray đảm bảo cấp phát.
 - **Dashboard** — Ray Serve dashboard cung cấp trạng thái replica, throughput request, và tỉ lệ lỗi theo thời gian thực.

@@ -20,7 +20,7 @@ Dịch vụ xây dựng trên FastAPI và Ray Serve, cung cấp endpoint `/v1/au
 - Tách mixed-batch: request có/không có timestamp trong cùng batch chạy thành các GPU sub-call riêng, tránh transfer logit không cần thiết
 - Sắp xếp batch theo độ dài để giảm padding lãng phí, và AMP autocast (`torch.autocast`, chỉ trên CUDA) cho inference mixed-precision
 - Giải mã audio thẳng từ bytes bằng TorchCodec (mono 16 kHz trong một lượt FFmpeg) trên pool giải mã có giới hạn, và GPU executor đơn luồng riêng
-- Hỗ trợ đa replica: scale bằng cách đặt `NUM_REPLICAS` trong `config/config.toml`
+- Hỗ trợ đa replica: scale bằng cách đặt `num_replicas` trong `config/serve.yaml`
 
 ### 🔒 Quyền riêng tư & bảo mật
 - Triển khai hoàn toàn cục bộ - audio không rời khỏi hạ tầng của bạn
@@ -84,7 +84,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 1. **💻 Phần cứng**
    - 🖥️ **CPU**: x86_64 (khuyến nghị có AVX2)
-   - 🧠 **RAM**: tối thiểu 16GB (container có thể dùng tới 16GB shared memory)
+   - 🧠 **RAM**: tối thiểu 16GB; container bị giới hạn 24GB (`mem_limit`), gồm 16GB shared memory và object store của Ray
    - 🎮 **GPU**: NVIDIA GPU hỗ trợ CUDA (khuyến nghị để có hiệu năng tối ưu)
    - 💾 **Lưu trữ**: nên dùng SSD; image khá lớn (~30GB gồm NeMo và PyTorch) cộng thêm cache model
 
@@ -121,9 +121,6 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 4. **Cấu hình tham số serving** trong `config/config.toml` cho phù hợp phần cứng (xem mục Cấu hình bên dưới):
    ```toml
    [serving]
-   NUM_GPUS = 1
-   NUM_REPLICAS = 1
-   MAX_ONGOING_REQUESTS = 16
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
    DECODE_WORKERS = 4
@@ -203,7 +200,7 @@ RTF = thời gian xử lý ÷ thời lượng audio. Giá trị nhỏ hơn 1 ngh
 | `nvidia/parakeet-ctc-0.6b-vi` | NVIDIA RTX 3060 | Chỉ text | 7.63 s | 0.162 s | 0.021 | 0.021 – 0.022 |
 | `nvidia/parakeet-ctc-0.6b-vi` | NVIDIA RTX 3060 | Timestamp theo từ | 7.63 s | 0.192 s | 0.025 | 0.024 – 0.026 |
 
-> ℹ️ Thời gian là end-to-end qua localhost (upload + decode + inference) với `NUM_REPLICAS=1` và giá trị mặc định trong `config/config.toml`; request đầu tiên (warm-up) mất 0.177 s. RTF phụ thuộc model, GPU và tải đồng thời, nên hãy đo lại trên phần cứng của bạn.
+> ℹ️ Thời gian là end-to-end qua localhost (upload + decode + inference) với `num_replicas=1` và giá trị mặc định trong `config/config.toml`; request đầu tiên (warm-up) mất 0.177 s. RTF phụ thuộc model, GPU và tải đồng thời, nên hãy đo lại trên phần cứng của bạn.
 
 ## 🚦 Request đồng thời
 
@@ -232,13 +229,10 @@ File audio mẫu nằm trong `resources/` (`sample_vi.wav` tiếng Việt, `samp
 
 ## 🎛️ Tham số serving
 
-Hành vi serving được đặt trong `config/config.toml`. Thay đổi có hiệu lực sau `make restart`.
+Tham số model và batching được đặt trong `config/config.toml`. Số replica, GPU/CPU, `max_ongoing_requests` và host/port nằm trong `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Thay đổi có hiệu lực sau `make restart`.
 
 | Khóa | Mặc định | Mô tả |
 |------|----------|-------|
-| `[serving] NUM_GPUS` | `1` | Số GPU dành cho mỗi replica (giá trị phân số như `0.5` cho phép các replica dùng chung GPU) |
-| `[serving] NUM_REPLICAS` | `1` | Số replica của model |
-| `[serving] MAX_ONGOING_REQUESTS` | `16` | Số request đang xử lý tối đa trên mỗi replica |
 | `[serving] MAX_BATCH_SIZE` | `8` | Số request tối đa được gộp vào một GPU batch |
 | `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian một batch chờ cho đầy trước khi được gửi đi |
 | `[serving] DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica; đồng thời là `num_cpus` Ray dành cho replica |

@@ -10,7 +10,7 @@ The ASR model is served through **Ray Serve** rather than a bare FastAPI/Uvicorn
 
 ### Pros
 
-- **Multi-replica scaling** — set `NUM_REPLICAS > 1` to run multiple independent model copies across GPUs with no code changes.
+- **Multi-replica scaling** — set `num_replicas > 1` in `config/serve.yaml` to run multiple independent model copies across GPUs with no code changes.
 - **Built-in autobatching** — `@serve.batch` aggregates concurrent requests before the GPU call without manual queue management.
 - **GPU resource isolation** — each replica declares `num_gpus` via `ray_actor_options`; Ray guarantees the allocation.
 - **Dashboard** — Ray Serve dashboard provides live replica status, request throughput, and error rates.

@@ -3,23 +3,17 @@
 ## Trình tự khởi động
 
 ```text
-app.py (serve run app.app:deployment)
+serve run config/serve.yaml  →  import app.app:deployment
+    │   Ray cluster, HTTP proxy (host/port), số replica, GPU và
+    │   max_ongoing_requests đều lấy từ config/serve.yaml
+    │
     │
     ├── logging.basicConfig(level=WARNING)
     │   suppress: nemo / nemo_logger / lightning / pytorch_lightning /
     │             filelock / datasets / huggingface_hub  → ERROR
     │
-    ├── ray.init(logging_level=WARNING)
-    │       khởi động Ray cluster cục bộ (hoặc kết nối cluster đã có)
-    │
     ├── ASRService.bind()
-    │       đăng ký cấu hình deployment:
-    │           num_replicas=NUM_REPLICAS
-    │           num_gpus=NUM_GPUS  mỗi replica
-    │           max_ongoing_requests=MAX_ONGOING_REQUESTS
-    │
-    ├── serve.start(host=RAY_HOST, port=RAY_PORT)
-    │       khởi động Ray Serve HTTP proxy
+    │       không có side effect: không ray.init(), không serve.start()
     │
     └── ASRService.__init__()  [gọi một lần mỗi replica]
             │
@@ -40,7 +34,7 @@ app.py (serve run app.app:deployment)
             │       │
             │       └── logger.info("ASR model loaded on CUDA/CPU")
             │
-            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N decode_workers=N")
+            ├── logger.info("ASRService ready | max_batch_size=N decode_workers=N")
             │
             ├── ThreadPoolExecutor(max_workers=DECODE_WORKERS)  ← pool giải mã audio riêng
             └── ThreadPoolExecutor(max_workers=1)               ← luồng GPU riêng

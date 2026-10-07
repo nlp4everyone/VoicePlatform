@@ -10,15 +10,15 @@
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  Ray Serve  (serve.start)                        │
-│  host: RAY_HOST   port: RAY_PORT                                 │
+│                  Ray Serve  (serve run config/serve.yaml)        │
+│  http_options: host / port  (config/serve.yaml)                  │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │  ASRService  (@serve.deployment)                           │  │
-│  │  num_replicas=NUM_REPLICAS                                 │  │
-│  │  num_gpus=NUM_GPUS  per replica                            │  │
-│  │  max_ongoing_requests=MAX_ONGOING_REQUESTS                 │  │
-│  │  num_cpus=DECODE_WORKERS                                   │  │
+│  │  num_replicas                                              │  │
+│  │  ray_actor_options.num_gpus                                │  │
+│  │  max_ongoing_requests                                      │  │
+│  │  ray_actor_options.num_cpus (>= DECODE_WORKERS)            │  │
 │  │                                                            │  │
 │  │  FastAPI ingress (@serve.ingress)                          │  │
 │  │   POST /v1/audio/transcriptions                            │  │
@@ -92,18 +92,15 @@ Language detection uses `pycld2` and runs only for timestamp responses.
 
 ## Configuration
 
-All parameters live in `config/config.toml`. Changes require a container restart.
+Model and batching parameters live in `config/config.toml`; replicas, resources and host/port live in `config/serve.yaml`. Changes require a container restart.
 
 ### `[serving]`
 
 | Key | Default | Description |
 |---|---|---|
-| `NUM_GPUS` | `1` | GPUs allocated per replica |
-| `NUM_REPLICAS` | `1` | Number of ASRService replicas |
-| `MAX_ONGOING_REQUESTS` | `16` | Max in-flight requests per replica |
 | `MAX_BATCH_SIZE` | `8` | Max items per GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Max wait time to fill a batch (seconds) |
-| `DECODE_WORKERS` | `4` | Audio decode threads per replica (also the replica's Ray `num_cpus`) |
+| `DECODE_WORKERS` | `4` | Audio decode threads per replica |
 
 ### `[asr]`
 
@@ -112,13 +109,17 @@ All parameters live in `config/config.toml`. Changes require a container restart
 | `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | HuggingFace model identifier |
 | `ASR_DEVICE` | `auto` | `auto` / `cuda` / `cpu` |
 
-### `[system]`
+### `config/serve.yaml`
 
 | Key | Description |
 |---|---|
-| `RAY_HOST` | HTTP host for Ray Serve |
-| `RAY_PORT` | HTTP port for Ray Serve |
-| `DEPLOYMENT_NAME` | Name registered with Ray Serve |
+| `proxy_location` | Where the HTTP proxy runs (`EveryNode`) |
+| `http_options.host` / `port` | HTTP host and port of Ray Serve |
+| `http_options.request_timeout_s` | Proxy returns 408 and cancels the request after this many seconds (default `120`); work already running in a decode/GPU thread is not stopped |
+| `applications[0].deployments[0].num_replicas` | Number of ASRService replicas |
+| `...max_ongoing_requests` | Max in-flight requests per replica |
+| `...max_queued_requests` | Max requests waiting beyond `max_ongoing_requests` (default `32`); when full, new requests get 503 |
+| `...ray_actor_options.num_gpus` / `num_cpus` | GPUs and CPUs reserved per replica |
 
 ### Environment (`.env` / `docker-compose.yml`)
 
@@ -128,6 +129,9 @@ All parameters live in `config/config.toml`. Changes require a container restart
 | `RAY_DASHBOARD_PORT` | Host port mapped to Ray dashboard (default `8265`) |
 | `RAY_LOG_LEVEL` | Ray internal log level (default `WARNING`) |
 | `RAY_SERVE_LOG_TO_STDERR` | Forward Serve logs to stderr (default `1`) |
+| `RAY_memory_monitor_refresh_ms` | Ray OOM monitor interval (default `250`, `0` = off) |
+| `RAY_memory_usage_threshold` | RAM fraction at which Ray kills a worker (default `0.95`) |
+| `RAY_object_store_memory` | Ray object store size in bytes (default 4 GiB) |
 | `HF_HOME` | HuggingFace cache directory |
 
 ---
@@ -137,11 +141,11 @@ All parameters live in `config/config.toml`. Changes require a container restart
 ```
 VoicePlatform/
 ├── app/
-│   ├── app.py                          # Entry point: ray.init, serve.start, ASRService.bind
+│   ├── app.py                          # Entry point: ASRService.bind (no ray.init / serve.start)
 │   ├── core/config/
 │   │   ├── asr.py                      # ASR_MODEL_NAME, ASR_DEVICE
-│   │   ├── serving.py                  # NUM_GPUS, NUM_REPLICAS, MAX_BATCH_SIZE, …
-│   │   └── system.py                   # RAY_HOST, RAY_PORT, DEPLOYMENT_NAME
+│   │   ├── serving.py                  # MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS
+│   │   └── system.py                   # AUDIO_TEMP_DIR
 │   ├── services/
 │   │   ├── asr/
 │   │   │   ├── factory.py              # RecognizerFactory — creates ParakeetRecognizer

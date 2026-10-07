@@ -10,15 +10,15 @@
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  Ray Serve  (serve.start)                        │
-│  host: RAY_HOST   port: RAY_PORT                                 │
+│                  Ray Serve  (serve run config/serve.yaml)        │
+│  http_options: host / port  (config/serve.yaml)                  │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │  ASRService  (@serve.deployment)                           │  │
-│  │  num_replicas=NUM_REPLICAS                                 │  │
-│  │  num_gpus=NUM_GPUS  mỗi replica                            │  │
-│  │  max_ongoing_requests=MAX_ONGOING_REQUESTS                 │  │
-│  │  num_cpus=DECODE_WORKERS                                   │  │
+│  │  num_replicas                                              │  │
+│  │  ray_actor_options.num_gpus                                │  │
+│  │  max_ongoing_requests                                      │  │
+│  │  ray_actor_options.num_cpus (>= DECODE_WORKERS)            │  │
 │  │                                                            │  │
 │  │  FastAPI ingress (@serve.ingress)                          │  │
 │  │   POST /v1/audio/transcriptions                            │  │
@@ -92,18 +92,15 @@ Phát hiện ngôn ngữ dùng `pycld2`, chỉ chạy cho response có timestamp
 
 ## Cấu hình
 
-Tất cả tham số nằm trong `config/config.toml`. Thay đổi yêu cầu restart container.
+Tham số model và batching nằm trong `config/config.toml`; replica, tài nguyên và host/port nằm trong `config/serve.yaml`. Thay đổi yêu cầu restart container.
 
 ### `[serving]`
 
 | Key | Mặc định | Mô tả |
 |---|---|---|
-| `NUM_GPUS` | `1` | Số GPU cấp phát mỗi replica |
-| `NUM_REPLICAS` | `1` | Số replica ASRService |
-| `MAX_ONGOING_REQUESTS` | `16` | Số request đang xử lý tối đa mỗi replica |
 | `MAX_BATCH_SIZE` | `8` | Số item tối đa mỗi GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian chờ tối đa để điền đầy batch (giây) |
-| `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica (cũng là `num_cpus` Ray của replica) |
+| `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica |
 
 ### `[asr]`
 
@@ -112,13 +109,17 @@ Tất cả tham số nằm trong `config/config.toml`. Thay đổi yêu cầu re
 | `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | Định danh model trên HuggingFace |
 | `ASR_DEVICE` | `auto` | `auto` / `cuda` / `cpu` |
 
-### `[system]`
+### `config/serve.yaml`
 
 | Key | Mô tả |
 |---|---|
-| `RAY_HOST` | HTTP host của Ray Serve |
-| `RAY_PORT` | HTTP port của Ray Serve |
-| `DEPLOYMENT_NAME` | Tên đăng ký với Ray Serve |
+| `proxy_location` | Nơi chạy HTTP proxy (`EveryNode`) |
+| `http_options.host` / `port` | HTTP host và port của Ray Serve |
+| `http_options.request_timeout_s` | Proxy trả 408 và hủy request sau số giây này (mặc định `120`); công việc đã chạy trong thread decode/GPU không bị dừng |
+| `applications[0].deployments[0].num_replicas` | Số replica ASRService |
+| `...max_ongoing_requests` | Số request đang xử lý tối đa mỗi replica |
+| `...max_queued_requests` | Số request chờ tối đa ngoài `max_ongoing_requests` (mặc định `32`); khi đầy, request mới nhận 503 |
+| `...ray_actor_options.num_gpus` / `num_cpus` | GPU và CPU dành cho mỗi replica |
 
 ### Biến môi trường (`.env` / `docker-compose.yml`)
 
@@ -128,6 +129,9 @@ Tất cả tham số nằm trong `config/config.toml`. Thay đổi yêu cầu re
 | `RAY_DASHBOARD_PORT` | Host port map tới Ray dashboard (mặc định `8265`) |
 | `RAY_LOG_LEVEL` | Log level nội bộ của Ray (mặc định `WARNING`) |
 | `RAY_SERVE_LOG_TO_STDERR` | Chuyển Serve logs ra stderr (mặc định `1`) |
+| `RAY_memory_monitor_refresh_ms` | Chu kỳ giám sát OOM của Ray (mặc định `250`, `0` = tắt) |
+| `RAY_memory_usage_threshold` | Tỷ lệ RAM khiến Ray kill worker (mặc định `0.95`) |
+| `RAY_object_store_memory` | Dung lượng object store của Ray, tính bằng byte (mặc định 4 GiB) |
 | `HF_HOME` | Thư mục cache HuggingFace |
 
 ---
@@ -137,11 +141,11 @@ Tất cả tham số nằm trong `config/config.toml`. Thay đổi yêu cầu re
 ```
 VoicePlatform/
 ├── app/
-│   ├── app.py                          # Entry point: ray.init, serve.start, ASRService.bind
+│   ├── app.py                          # Entry point: ASRService.bind (no ray.init / serve.start)
 │   ├── core/config/
 │   │   ├── asr.py                      # ASR_MODEL_NAME, ASR_DEVICE
-│   │   ├── serving.py                  # NUM_GPUS, NUM_REPLICAS, MAX_BATCH_SIZE, …
-│   │   └── system.py                   # RAY_HOST, RAY_PORT, DEPLOYMENT_NAME
+│   │   ├── serving.py                  # MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS
+│   │   └── system.py                   # AUDIO_TEMP_DIR
 │   ├── services/
 │   │   ├── asr/
 │   │   │   ├── factory.py              # RecognizerFactory — tạo ParakeetRecognizer

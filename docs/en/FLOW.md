@@ -3,23 +3,17 @@
 ## Startup Sequence
 
 ```text
-app.py (serve run app.app:deployment)
+serve run config/serve.yaml  →  imports app.app:deployment
+    │   Ray cluster, HTTP proxy (host/port), replicas, GPUs and
+    │   max_ongoing_requests all come from config/serve.yaml
+    │
     │
     ├── logging.basicConfig(level=WARNING)
     │   suppress: nemo / nemo_logger / lightning / pytorch_lightning /
     │             filelock / datasets / huggingface_hub  → ERROR
     │
-    ├── ray.init(logging_level=WARNING)
-    │       starts local Ray cluster (or connects to existing)
-    │
     ├── ASRService.bind()
-    │       registers deployment config:
-    │           num_replicas=NUM_REPLICAS
-    │           num_gpus=NUM_GPUS  per replica
-    │           max_ongoing_requests=MAX_ONGOING_REQUESTS
-    │
-    ├── serve.start(host=RAY_HOST, port=RAY_PORT)
-    │       starts Ray Serve HTTP proxy
+    │       no side effects: no ray.init(), no serve.start()
     │
     └── ASRService.__init__()  [called once per replica]
             │
@@ -40,7 +34,7 @@ app.py (serve run app.app:deployment)
             │       │
             │       └── logger.info("ASR model loaded on CUDA/CPU")
             │
-            ├── logger.info("ASRService ready | replicas=N max_ongoing_requests=N max_batch_size=N decode_workers=N")
+            ├── logger.info("ASRService ready | max_batch_size=N decode_workers=N")
             │
             ├── ThreadPoolExecutor(max_workers=DECODE_WORKERS)  ← dedicated audio decode pool
             └── ThreadPoolExecutor(max_workers=1)               ← dedicated GPU thread

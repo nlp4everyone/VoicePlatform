@@ -4,11 +4,11 @@
 
 Ray Serve deployment that owns the FastAPI ingress and the batch transcription logic.
 
-**Deployment config** (set via `@serve.deployment`):
-- `num_replicas=NUM_REPLICAS` — number of independent replicas; each replica holds one model copy
-- `num_gpus=NUM_GPUS` — GPU resources reserved per replica
-- `num_cpus=DECODE_WORKERS` — one CPU reserved per audio decode thread
-- `max_ongoing_requests=MAX_ONGOING_REQUESTS` — maximum in-flight requests per replica before Ray Serve applies backpressure
+**Deployment config** (set in `config/serve.yaml`, not in the decorator):
+- `num_replicas` — number of independent replicas; each replica holds one model copy
+- `ray_actor_options.num_gpus` — GPU resources reserved per replica
+- `ray_actor_options.num_cpus` — one CPU reserved per audio decode thread (keep ≥ `DECODE_WORKERS`)
+- `max_ongoing_requests` — maximum in-flight requests per replica before Ray Serve applies backpressure
 
 **`__init__()`**
 - Re-applies `ray.serve` log level to INFO (Ray Serve resets it during actor initialization)

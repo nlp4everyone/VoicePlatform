@@ -7,26 +7,27 @@ services:
       - "${RAY_FASTAPI_PORT:-8000}:8000"   # Inference API
       - "${RAY_DASHBOARD_PORT:-8265}:8265" # Dashboard API
     environment:
-      - HF_HOME=/home/ray/.cache/huggingface
-      - RAY_memory_monitor_refresh_ms=0
-      - RAY_object_store_memory=4294967296
-      - RAY_DASHBOARD_HOST=0.0.0.0
-      - RAY_LOG_LEVEL=WARNING
-      - RAY_SERVE_LOG_TO_STDERR=1
+      - HF_HOME=/home/ray/.cache/huggingface    # HF model cache (mounted below)
+      - RAY_memory_monitor_refresh_ms=250       # OOM monitor interval (0 = off)
+      - RAY_memory_usage_threshold=0.95         # RAM fraction that triggers worker kill
+      - RAY_object_store_memory=4294967296      # Object store size (4 GiB)
+      - RAY_DASHBOARD_HOST=0.0.0.0              # Expose dashboard outside container
+      - RAY_LOG_LEVEL=WARNING                   # Ray log verbosity
+      - RAY_SERVE_LOG_TO_STDERR=1               # Serve logs to docker logs
     volumes:
-      - ${HOME}/.cache/huggingface:/home/ray/.cache/huggingface
-      - type: tmpfs
+      - ${HOME}/.cache/huggingface:/home/ray/.cache/huggingface  # Reuse host model cache
+      - type: tmpfs                                              # Ray temp files in RAM
         target: /tmp
     deploy:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              count: all
+            - driver: nvidia          # NVIDIA GPU
+              count: all              # Use all GPUs
               capabilities: [gpu]
-    shm_size: "16gb"
+    mem_limit: 24g                    # Hard RAM cap; includes tmpfs + object store
+    memswap_limit: 24g                # = mem_limit, no swap
+    shm_size: "16gb"                  # Shared memory for Ray object store
     tmpfs:
-      - /dev/shm:size=16g
-    restart: unless-stopped
-
-
+      - /dev/shm:size=16g             # Shared memory in RAM
+    restart: unless-stopped           # Auto-restart unless manually stopped

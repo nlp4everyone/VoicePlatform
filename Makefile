@@ -12,7 +12,7 @@ export
 RAY_FASTAPI_PORT   ?= 8000
 RAY_DASHBOARD_PORT ?= 8265
 
-.PHONY: help env build up start down restart logs ps health clean
+.PHONY: help env build prefetch up start down restart logs ps health clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -27,6 +27,9 @@ env: ## Create .env from .env.sample if it does not exist
 
 build: env ## Build the service image
 	$(COMPOSE) build
+
+prefetch: build ## Download the configured model into the HuggingFace cache
+	$(COMPOSE) run --rm --no-deps -e HF_HUB_OFFLINE=0 $(SERVICE) python -m app.prefetch
 
 up: env ## Build if needed and start the service in the background
 	$(COMPOSE) up -d --build --remove-orphans

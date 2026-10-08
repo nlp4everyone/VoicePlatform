@@ -8,6 +8,7 @@ services:
       - "${RAY_DASHBOARD_PORT:-8265}:8265" # Dashboard API
     environment:
       - HF_HOME=/home/ray/.cache/huggingface    # HF model cache (mounted below)
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}     # 1 = never call HF; run `make prefetch` first
       - RAY_memory_monitor_refresh_ms=250       # OOM monitor interval (0 = off)
       - RAY_memory_usage_threshold=0.95         # RAM fraction that triggers worker kill
       - RAY_object_store_memory=4294967296      # Object store size (4 GiB)

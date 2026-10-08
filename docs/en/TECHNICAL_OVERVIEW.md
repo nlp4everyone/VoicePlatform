@@ -92,9 +92,9 @@ Language detection uses `pycld2` and runs only for timestamp responses.
 
 ## Configuration
 
-Model and batching parameters live in `config/config.toml`; replicas, resources and host/port live in `config/serve.yaml`. Changes require a container restart.
+Model and batching parameters live in `config/config.toml`; replicas, resources and host/port live in `config/serve.yaml`. Any key can be overridden by an env var `ASR_<KEY>`, without doubling the prefix (precedence: env > `config.toml` > default). Changes require a container restart.
 
-### `[serving]`
+### Serving
 
 | Key | Default | Description |
 |---|---|---|
@@ -102,7 +102,7 @@ Model and batching parameters live in `config/config.toml`; replicas, resources 
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Max wait time to fill a batch (seconds) |
 | `DECODE_WORKERS` | `4` | Audio decode threads per replica |
 
-### `[asr]`
+### Model
 
 | Key | Default | Description |
 |---|---|---|
@@ -143,9 +143,7 @@ VoicePlatform/
 ├── app/
 │   ├── app.py                          # Entry point: ASRService.bind (no ray.init / serve.start)
 │   ├── core/config/
-│   │   ├── asr.py                      # ASR_MODEL_NAME, ASR_DEVICE
-│   │   ├── serving.py                  # MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS
-│   │   └── system.py                   # AUDIO_TEMP_DIR
+│   │   └── settings.py                 # Settings: MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS, ASR_*
 │   ├── services/
 │   │   ├── asr/
 │   │   │   ├── factory.py              # RecognizerFactory — creates ParakeetRecognizer

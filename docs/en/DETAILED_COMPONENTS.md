@@ -126,9 +126,9 @@ Mixed (split_mixed_batch=False):
 
 ---
 
-## Configuration Loader (`app/utils/config_loader/toml_loader.py`)
+## Settings (`app/core/config/settings.py`)
 
-Reads `config/config.toml` and exposes sections as dicts. Used by `app/core/config/*.py` to populate module-level constants imported via `*`.
+A `pydantic-settings` `Settings` class exposed as the `settings` singleton. Values come from `ASR_*` env vars, then `config/config.toml`, then defaults, and are type-checked at startup (e.g. `ASR_DEVICE` must be `auto`/`cuda`/`cpu`, `MAX_BATCH_SIZE` > 0). Empty env vars are ignored.
 
 ---
 

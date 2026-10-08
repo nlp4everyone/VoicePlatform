@@ -120,12 +120,9 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 4. **Cấu hình tham số serving** trong `config/config.toml` cho phù hợp phần cứng (xem mục Cấu hình bên dưới):
    ```toml
-   [serving]
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
    DECODE_WORKERS = 4
-
-   [asr]
    ASR_MODEL_NAME = "nvidia/parakeet-ctc-0.6b-vi"
    ASR_DEVICE = "auto"
    ```
@@ -137,7 +134,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
    # Hoặc chạy ở foreground
    make start
    ```
-   Lần chạy đầu tiên cũng tải model vào `~/.cache/huggingface`, có thể mất vài phút. Docker mặc định được gọi bằng `sudo`. Dùng `make up DOCKER=docker` nếu user của bạn đã thuộc nhóm `docker`.
+   Lần chạy đầu tiên cũng tải model vào `~/.cache/huggingface`, có thể mất vài phút. Để tải trước, chạy `make prefetch` trước `make up`; sau khi xong, đặt `HF_HUB_OFFLINE=1` trong `.env` để khi khởi động không gọi HuggingFace. Docker mặc định được gọi bằng `sudo`. Dùng `make up DOCKER=docker` nếu user của bạn đã thuộc nhóm `docker`.
 
 6. **Kiểm tra dịch vụ đang chạy**
    ```bash
@@ -229,16 +226,16 @@ File audio mẫu nằm trong `resources/` (`sample_vi.wav` tiếng Việt, `samp
 
 ## 🎛️ Tham số serving
 
-Tham số model và batching được đặt trong `config/config.toml`. Số replica, GPU/CPU, `max_ongoing_requests` và host/port nằm trong `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Thay đổi có hiệu lực sau `make restart`.
+Tham số model và batching được đặt trong `config/config.toml`; mỗi khóa có thể được ghi đè bằng biến môi trường `ASR_<KEY>`, không lặp tiền tố (ví dụ `ASR_MAX_BATCH_SIZE`, `ASR_DEVICE`) trong `.env`, giá trị này được ưu tiên hơn. Số replica, GPU/CPU, `max_ongoing_requests` và host/port nằm trong `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Thay đổi có hiệu lực sau `make restart`.
 
 | Khóa | Mặc định | Mô tả |
 |------|----------|-------|
-| `[serving] MAX_BATCH_SIZE` | `8` | Số request tối đa được gộp vào một GPU batch |
-| `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian một batch chờ cho đầy trước khi được gửi đi |
-| `[serving] DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica; đồng thời là `num_cpus` Ray dành cho replica |
-| `[asr] ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | Model NeMo Parakeet cần load (tên phải bắt đầu bằng `nvidia/parakeet`) |
-| `[asr] ASR_DEVICE` | `auto` | `auto`, `cuda` hoặc `cpu` |
-| `[asr] SPLIT_MIXED_BATCH` | `true` | Chạy request có/không có timestamp thành các GPU sub-call riêng |
+| `MAX_BATCH_SIZE` | `8` | Số request tối đa được gộp vào một GPU batch |
+| `BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian một batch chờ cho đầy trước khi được gửi đi |
+| `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica; đồng thời là `num_cpus` Ray dành cho replica |
+| `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | Model NeMo Parakeet cần load (tên phải bắt đầu bằng `nvidia/parakeet`) |
+| `ASR_DEVICE` | `auto` | `auto`, `cuda` hoặc `cpu` |
+| `SPLIT_MIXED_BATCH` | `true` | Chạy request có/không có timestamp thành các GPU sub-call riêng |
 
 ## 🌍 Biến môi trường
 
@@ -248,6 +245,10 @@ Tham số model và batching được đặt trong `config/config.toml`. Số re
 # 🌐 Cấu hình mạng
 RAY_FASTAPI_PORT=8005                   # Cổng host của inference API (container lắng nghe ở 8000)
 RAY_DASHBOARD_PORT=8265                 # Cổng host của Ray dashboard
+
+# 🎛️ Ghi đè tùy chọn config/config.toml (để trống = giữ giá trị trong file)
+ASR_MAX_BATCH_SIZE=16
+ASR_DEVICE=cuda
 ```
 
 <br />

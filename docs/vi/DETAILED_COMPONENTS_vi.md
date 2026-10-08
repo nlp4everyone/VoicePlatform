@@ -126,9 +126,9 @@ Hỗn hợp (split_mixed_batch=False):
 
 ---
 
-## Configuration Loader (`app/utils/config_loader/toml_loader.py`)
+## Settings (`app/core/config/settings.py`)
 
-Đọc `config/config.toml` và trả về từng section dưới dạng dict. Được dùng bởi `app/core/config/*.py` để điền các hằng số cấp module, import qua `*`.
+Class `Settings` của `pydantic-settings`, dùng qua singleton `settings`. Giá trị lấy từ biến môi trường `ASR_*`, rồi `config/config.toml`, rồi mặc định, và được kiểm tra kiểu khi khởi động (ví dụ `ASR_DEVICE` phải là `auto`/`cuda`/`cpu`, `MAX_BATCH_SIZE` > 0). Biến môi trường rỗng bị bỏ qua.
 
 ---
 

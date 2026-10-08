@@ -92,9 +92,9 @@ Phát hiện ngôn ngữ dùng `pycld2`, chỉ chạy cho response có timestamp
 
 ## Cấu hình
 
-Tham số model và batching nằm trong `config/config.toml`; replica, tài nguyên và host/port nằm trong `config/serve.yaml`. Thay đổi yêu cầu restart container.
+Tham số model và batching nằm trong `config/config.toml`; replica, tài nguyên và host/port nằm trong `config/serve.yaml`. Mỗi khóa có thể được ghi đè bằng biến môi trường `ASR_<KEY>`, không lặp tiền tố (ưu tiên: env > `config.toml` > mặc định). Thay đổi yêu cầu restart container.
 
-### `[serving]`
+### Serving
 
 | Key | Mặc định | Mô tả |
 |---|---|---|
@@ -102,7 +102,7 @@ Tham số model và batching nằm trong `config/config.toml`; replica, tài ngu
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian chờ tối đa để điền đầy batch (giây) |
 | `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica |
 
-### `[asr]`
+### Model
 
 | Key | Mặc định | Mô tả |
 |---|---|---|
@@ -143,9 +143,7 @@ VoicePlatform/
 ├── app/
 │   ├── app.py                          # Entry point: ASRService.bind (no ray.init / serve.start)
 │   ├── core/config/
-│   │   ├── asr.py                      # ASR_MODEL_NAME, ASR_DEVICE
-│   │   ├── serving.py                  # MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS
-│   │   └── system.py                   # AUDIO_TEMP_DIR
+│   │   └── settings.py                 # Settings: MAX_BATCH_SIZE, BATCH_WAIT_TIMEOUT_S, DECODE_WORKERS, ASR_*
 │   ├── services/
 │   │   ├── asr/
 │   │   │   ├── factory.py              # RecognizerFactory — tạo ParakeetRecognizer

@@ -120,12 +120,9 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 4. **Configure the serving parameters** in `config/config.toml` to match your hardware (see Configuration below):
    ```toml
-   [serving]
    MAX_BATCH_SIZE = 8
    BATCH_WAIT_TIMEOUT_S = 0.1
    DECODE_WORKERS = 4
-
-   [asr]
    ASR_MODEL_NAME = "nvidia/parakeet-ctc-0.6b-vi"
    ASR_DEVICE = "auto"
    ```
@@ -137,7 +134,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
    # Or run in the foreground
    make start
    ```
-   The first start also downloads the model into `~/.cache/huggingface`, which can take a few minutes. Docker is invoked with `sudo` by default. Override with `make up DOCKER=docker` if your user is in the `docker` group.
+   The first start also downloads the model into `~/.cache/huggingface`, which can take a few minutes. To download it ahead of time instead, run `make prefetch` before `make up`; once it has finished, set `HF_HUB_OFFLINE=1` in `.env` so startup never calls HuggingFace. Docker is invoked with `sudo` by default. Override with `make up DOCKER=docker` if your user is in the `docker` group.
 
 6. **Verify the service is running**
    ```bash
@@ -229,16 +226,16 @@ Sample audio files are included in `resources/` (`sample_vi.wav` for Vietnamese,
 
 ## 🎛️ Serving Parameters
 
-Model and batching parameters are set in `config/config.toml`. Replica count, GPU/CPU, `max_ongoing_requests` and host/port live in `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Changes take effect after `make restart`.
+Model and batching parameters are set in `config/config.toml`; each can be overridden by an env var named `ASR_<KEY>` without doubling the prefix (e.g. `ASR_MAX_BATCH_SIZE`, `ASR_DEVICE`) in `.env`, which takes precedence. Replica count, GPU/CPU, `max_ongoing_requests` and host/port live in `config/serve.yaml` (`num_replicas`, `ray_actor_options.num_gpus`, `max_ongoing_requests`, `http_options`). Changes take effect after `make restart`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `[serving] MAX_BATCH_SIZE` | `8` | Maximum number of requests grouped into one GPU batch |
-| `[serving] BATCH_WAIT_TIMEOUT_S` | `0.1` | How long a batch waits to fill before it is dispatched |
-| `[serving] DECODE_WORKERS` | `4` | Audio decode threads per replica; also reserved as the replica's Ray `num_cpus` |
-| `[asr] ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | NeMo Parakeet model to load (name must start with `nvidia/parakeet`) |
-| `[asr] ASR_DEVICE` | `auto` | `auto`, `cuda` or `cpu` |
-| `[asr] SPLIT_MIXED_BATCH` | `true` | Run timestamp and non-timestamp requests as separate GPU sub-calls |
+| `MAX_BATCH_SIZE` | `8` | Maximum number of requests grouped into one GPU batch |
+| `BATCH_WAIT_TIMEOUT_S` | `0.1` | How long a batch waits to fill before it is dispatched |
+| `DECODE_WORKERS` | `4` | Audio decode threads per replica; also reserved as the replica's Ray `num_cpus` |
+| `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | NeMo Parakeet model to load (name must start with `nvidia/parakeet`) |
+| `ASR_DEVICE` | `auto` | `auto`, `cuda` or `cpu` |
+| `SPLIT_MIXED_BATCH` | `true` | Run timestamp and non-timestamp requests as separate GPU sub-calls |
 
 ## 🌍 Environment Variables
 
@@ -248,6 +245,10 @@ Set these in your `.env` file (created by `make env`):
 # 🌐 Network configuration
 RAY_FASTAPI_PORT=8005                   # Host port of the inference API (container listens on 8000)
 RAY_DASHBOARD_PORT=8265                 # Host port of the Ray dashboard
+
+# 🎛️ Optional overrides of config/config.toml (empty = keep the file's value)
+ASR_MAX_BATCH_SIZE=16
+ASR_DEVICE=cuda
 ```
 
 <br />

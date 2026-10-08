@@ -22,5 +22,5 @@ applications:
         max_queued_requests: 32  # queue beyond max_ongoing; when full, reject with 503
         ray_actor_options:
           num_gpus: 1  # GPUs reserved per replica
-          # One CPU per audio decode thread; keep >= DECODE_WORKERS in config.toml
+          # One CPU per audio decode thread; keep >= DECODE_WORKERS (config.toml)
           num_cpus: 4  # CPUs reserved per replica

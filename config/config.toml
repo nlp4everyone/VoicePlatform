@@ -1,10 +1,12 @@
-[serving]
+# Runtime settings. Any key can be overridden by an env var named
+# ASR_<KEY>, without doubling the prefix (e.g. ASR_MAX_BATCH_SIZE=16, ASR_DEVICE=cpu).
+
+# Serving
 MAX_BATCH_SIZE=8
 BATCH_WAIT_TIMEOUT_S=0.1
 DECODE_WORKERS=4
 
-[asr]
+# Model
 ASR_MODEL_NAME="nvidia/parakeet-ctc-0.6b-vi"
 ASR_DEVICE="auto"
 SPLIT_MIXED_BATCH=true
-

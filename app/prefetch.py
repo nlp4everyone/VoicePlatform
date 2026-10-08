@@ -8,12 +8,12 @@ import sys
 
 from huggingface_hub import snapshot_download
 
-from app.core.config.asr import ASR_MODEL_NAME
+from app.core.config.settings import settings
 
 
 def main() -> int:
-    print(f"Downloading '{ASR_MODEL_NAME}' into the HuggingFace cache...")
-    path = snapshot_download(repo_id=ASR_MODEL_NAME)
+    print(f"Downloading '{settings.ASR_MODEL_NAME}' into the HuggingFace cache...")
+    path = snapshot_download(repo_id=settings.ASR_MODEL_NAME)
     print(f"Model cached at {path}")
     return 0
 

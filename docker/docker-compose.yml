@@ -9,6 +9,13 @@ services:
     environment:
       - HF_HOME=/home/ray/.cache/huggingface    # HF model cache (mounted below)
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}     # 1 = never call HF; run `make prefetch` first
+      # App settings (empty = use config/config.toml); see .env.sample
+      - ASR_MAX_BATCH_SIZE=${ASR_MAX_BATCH_SIZE:-}
+      - ASR_BATCH_WAIT_TIMEOUT_S=${ASR_BATCH_WAIT_TIMEOUT_S:-}
+      - ASR_DECODE_WORKERS=${ASR_DECODE_WORKERS:-}
+      - ASR_MODEL_NAME=${ASR_MODEL_NAME:-}
+      - ASR_DEVICE=${ASR_DEVICE:-}
+      - ASR_SPLIT_MIXED_BATCH=${ASR_SPLIT_MIXED_BATCH:-}
       - RAY_memory_monitor_refresh_ms=250       # OOM monitor interval (0 = off)
       - RAY_memory_usage_threshold=0.95         # RAM fraction that triggers worker kill
       - RAY_object_store_memory=4294967296      # Object store size (4 GiB)

@@ -7,12 +7,7 @@ from typing import List, Literal, Optional, Union
 # ASR Model
 from app.services.asr import RecognizerFactory
 # Configuration imports
-from app.core.config.serving import (MAX_BATCH_SIZE,
-                                     BATCH_WAIT_TIMEOUT_S,
-                                     DECODE_WORKERS)
-from app.core.config.asr import (ASR_MODEL_NAME,
-                                 ASR_DEVICE,
-                                 SPLIT_MIXED_BATCH)
+from app.core.config.settings import settings
 # Utils
 from app.utils.audio import load_audio_from_bytes
 from app.utils.transcription.helper import (get_transcription_type,
@@ -94,26 +89,26 @@ class ASRService:
         logging.getLogger("ray.serve").setLevel(logging.INFO)
 
         # Initialize ASR model using factory pattern with configuration
-        self._asr_model = RecognizerFactory.create(model_name=ASR_MODEL_NAME,
-                                                   device=ASR_DEVICE)
+        self._asr_model = RecognizerFactory.create(model_name=settings.ASR_MODEL_NAME,
+                                                   device=settings.ASR_DEVICE)
 
         logger.info(
-            f"ASRService ready | max_batch_size={MAX_BATCH_SIZE} "
-            f"decode_workers={DECODE_WORKERS}"
+            f"ASRService ready | max_batch_size={settings.MAX_BATCH_SIZE} "
+            f"decode_workers={settings.DECODE_WORKERS}"
         )
 
         # Dedicated, bounded pool for audio decoding: unlike asyncio's default
         # executor (sized from the host CPU count and shared process-wide), its
         # size is explicit and caps the CPU and memory spent decoding at once.
-        self._decode_executor = concurrent.futures.ThreadPoolExecutor(max_workers=DECODE_WORKERS,
+        self._decode_executor = concurrent.futures.ThreadPoolExecutor(max_workers=settings.DECODE_WORKERS,
                                                                       thread_name_prefix="audio-decode")
 
         # Single-thread executor keeps GPU work pinned to one thread, avoiding
         # CUDA context migration and pool contention from asyncio's default executor.
         self._gpu_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-    @serve.batch(max_batch_size=MAX_BATCH_SIZE,
-                 batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S)
+    @serve.batch(max_batch_size=settings.MAX_BATCH_SIZE,
+                 batch_wait_timeout_s=settings.BATCH_WAIT_TIMEOUT_S)
     async def batched_transcribe(self,
                                  audio_tensors: List[torch.Tensor],
                                  timestamp_granularities: List[Union[str, None]]):
@@ -138,7 +133,7 @@ class ASRService:
                 asr_model=self._asr_model,
                 audio_data=audio_tensors,
                 timestamp_granularities=timestamp_granularities,
-                split_mixed_batch=SPLIT_MIXED_BATCH
+                split_mixed_batch=settings.SPLIT_MIXED_BATCH
             )
         )
         return transcriptions
@@ -148,7 +143,7 @@ class ASRService:
                   tags=["Audio"])
     async def transcribe_audio(self,
                                file: UploadFile = File(...),
-                               model: str = Form(ASR_MODEL_NAME),
+                               model: str = Form(settings.ASR_MODEL_NAME),
                                timestamp_granularity: Optional[Literal["word", "segment"]] = Form(
                                    default=None,
                                    alias="timestamp_granularities[]",

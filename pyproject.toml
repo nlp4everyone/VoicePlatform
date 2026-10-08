@@ -35,7 +35,7 @@ dependencies = [
     "protobuf~=5.29.5",
     "python-multipart==0.0.20",
     # Config
-    "toml==0.10.2",
+    "pydantic-settings>=2.6,<3",
 ]
 
 [tool.uv]

@@ -9,10 +9,12 @@ Deployment của Ray Serve, sở hữu FastAPI ingress và logic xử lý batch.
 - `ray_actor_options.num_gpus` — tài nguyên GPU dành riêng mỗi replica
 - `ray_actor_options.num_cpus` — mỗi luồng giải mã audio được dành một CPU (giữ ≥ `DECODE_WORKERS`)
 - `max_ongoing_requests` — số request đang xử lý tối đa mỗi replica trước khi Ray Serve áp dụng backpressure
+- `health_check_period_s` / `health_check_timeout_s` — tần suất Serve gọi `check_health()` và thời gian tối đa cho mỗi lần
 
 **`__init__()`**
 - Áp dụng lại log level INFO cho `ray.serve` (Ray Serve reset trong quá trình khởi tạo actor)
 - Gọi `RecognizerFactory.create()` để tải model ASR
+- Nếu `WARMUP` bật, giải mã `resources/sample_vi.wav` và gọi `warmup()` của recognizer, để replica được làm nóng trước khi Serve chuyển traffic tới
 - Tạo `ThreadPoolExecutor(max_workers=DECODE_WORKERS)` để giải mã audio — pool riêng, có giới hạn rõ ràng thay vì executor mặc định của asyncio
 - Tạo `ThreadPoolExecutor(max_workers=1)` — một luồng riêng giữ tất cả GPU work tuần tự, tránh CUDA context migration
 
@@ -22,6 +24,10 @@ Deployment của Ray Serve, sở hữu FastAPI ingress và logic xử lý batch.
 - Giải mã audio trên decode executor; audio không giải mã được hoặc rỗng bị từ chối bằng `InvalidAudioException`, chỉ ảnh hưởng request đó
 - Gọi thẳng `batched_transcribe` (không qua deployment handle) để mỗi request chỉ chiếm một slot `max_ongoing_requests`, và chờ kết quả
 - Định dạng response theo `timestamp_granularity`
+
+**`check_health()`** — do Ray Serve gọi; chuyển tiếp tới `check_health()` của recognizer. Nếu raise thì Serve restart replica.
+
+**`health()`** — `GET /health`: chạy `check_health()` và trả `200 {"status": "ok"}`, hoặc `503 {"status": "unhealthy"}` nếu raise.
 
 **`batched_transcribe()`** — handler `@serve.batch`
 - Nhận batch các cặp `(waveform, granularity)` được Ray Serve gom lại; audio đã được giải mã trước nên một file lỗi không làm hỏng cả batch
@@ -62,6 +68,10 @@ Tên model không hợp lệ sẽ raise `ValueError` lúc khởi động, deploy
 - Chạy inference dưới `torch.autocast(device_type="cuda")`, chỉ bật khi device là CUDA
 - Khôi phục thứ tự gốc sau inference
 - Trả về `List[TranscriptionResult]`; timestamp được làm tròn đến `precision` chữ số thập phân
+
+**`check_health()`** — trên CUDA, cấp phát tensor một phần tử; lệnh này lỗi khi CUDA context đã hỏng. Hàm không synchronize nên batch chạy lâu không làm check bị kẹt. Trên CPU không làm gì.
+
+**`warmup(audio, batch_sizes)`** — transcribe audio mẫu ở từng batch size, có và không có timestamp, rồi synchronize CUDA.
 
 **Properties:** `model_name`, `supported_models`
 

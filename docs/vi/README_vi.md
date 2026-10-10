@@ -42,6 +42,7 @@ Dịch vụ xây dựng trên FastAPI và Ray Serve, cung cấp endpoint `/v1/au
 | Transcription | HTTP | `POST /v1/audio/transcriptions` | ✅ |
 | Transcription kèm timestamp theo từ | HTTP | `POST /v1/audio/transcriptions` với `timestamp_granularities=["word"]` | ✅ |
 | Transcription kèm timestamp theo đoạn | HTTP | `POST /v1/audio/transcriptions` với `timestamp_granularities=["segment"]` | ✅ |
+| Health check | HTTP | `GET /health` (200 `ok` / 503 `unhealthy`) | ✅ |
 | Transcription (stream text) | HTTP (SSE) | - | ❌ |
 | Transcription (audio base64) | HTTP | - | ❌ |
 | Realtime (audio trực tiếp) | WebSocket | - | ❌ |
@@ -138,7 +139,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 6. **Kiểm tra dịch vụ đang chạy**
    ```bash
-   # Kiểm tra API đã phục vụ chưa
+   # Kiểm tra replica còn khỏe không (GET /health); docker ps cũng hiển thị trạng thái health của container
    make health
    # Xem log dịch vụ
    make logs
@@ -222,6 +223,14 @@ File audio mẫu nằm trong `resources/` (`sample_vi.wav` tiếng Việt, `samp
 
 <br />
 
+# 🩺 Health Check & Warm-up
+
+- **`GET /health`** trả `200 {"status": "ok"}` khi replica còn chạy được model, ngược lại trả `503 {"status": "unhealthy"}`. `make health` và healthcheck của Docker đều gọi endpoint này, nên `docker ps` hiển thị container là `healthy` hoặc `unhealthy`.
+- **Restart replica**: Ray Serve gọi `ASRService.check_health()` mỗi `health_check_period_s` (`config/serve.yaml`). Trên CUDA, hàm này cấp phát một tensor nhỏ, nên khi CUDA context hỏng (ví dụ lỗi Xid hoặc ECC) nó raise và Serve restart replica. Healthcheck của Docker chỉ báo trạng thái, không restart container.
+- **Warm-up**: mỗi replica transcribe `resources/sample_vi.wav` lúc khởi động (batch size 1 và `MAX_BATCH_SIZE`, có và không có timestamp) trước khi Serve chuyển traffic tới, để request thật đầu tiên không phải trả chi phí khởi tạo CUDA. Replica được restart sau khi health check lỗi cũng được warm-up lại. Đặt `ASR_WARMUP=false` để bỏ qua.
+
+<br />
+
 # ⚙️ Cấu hình
 
 ## 🎛️ Tham số serving
@@ -236,6 +245,7 @@ Tham số model và batching được đặt trong `config/config.toml`; mỗi k
 | `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | Model NeMo Parakeet cần load (tên phải bắt đầu bằng `nvidia/parakeet`) |
 | `ASR_DEVICE` | `auto` | `auto`, `cuda` hoặc `cpu` |
 | `SPLIT_MIXED_BATCH` | `true` | Chạy request có/không có timestamp thành các GPU sub-call riêng |
+| `WARMUP` | `true` | Transcribe `resources/sample_vi.wav` lúc khởi động (batch size 1 và `MAX_BATCH_SIZE`, có/không timestamp) để mỗi replica được làm nóng trước khi nhận traffic |
 
 ## 🌍 Biến môi trường
 
@@ -250,6 +260,25 @@ RAY_DASHBOARD_PORT=8265                 # Cổng host của Ray dashboard
 ASR_MAX_BATCH_SIZE=16
 ASR_DEVICE=cuda
 ```
+
+<br />
+
+# 🧪 Kiểm thử
+
+Bộ test chạy trên CPU, không cần GPU hay NeMo: NeMo được thay bằng module giả trong `tests/conftest.py`, và `ASRService` được chạy qua `TestClient` của FastAPI với recognizer giả. Test bao phủ helper batching, giải mã audio, settings, recognizer và API (transcription, response lỗi, `/health`, warm-up). Test không load model thật, nên cần kiểm tra phần đó trên máy có GPU bằng `make up`.
+
+```bash
+# Cài một lần (cần FFmpeg và libmagic, ví dụ apt install ffmpeg libmagic1)
+uv venv
+uv pip install --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple \
+    --index-strategy unsafe-best-match -r tests/requirements.txt
+
+make test PYTHON=.venv/bin/python   # pytest
+make lint PYTHON=.venv/bin/python   # ruff
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) chạy lint và test này mỗi lần push lên nhánh `ray/nvidia_asr`. Nó không deploy gì.
 
 <br />
 
@@ -268,6 +297,10 @@ ASR_DEVICE=cuda
 - [x] 🕒 Timestamp theo từ và theo đoạn
 - [x] 📝 Ví dụ minh họa (request đơn lẻ và đồng thời)
 - [x] ⏱️ Đo RTF trên audio mẫu
+- [x] 🧪 Unit test và integration test trên CPU, CI bằng GitHub Actions
+- [ ] 🔐 Xác thực: thêm API key (qua header) hoặc đặt service sau một gateway
+- [ ] 🔎 Request ID và log có cấu trúc, để dễ truy vết khi lỗi
+- [ ] 📊 Metrics (độ trễ, RTF, độ dài audio, kích thước batch, tỉ lệ lỗi) qua Prometheus exporter của Ray và Grafana
 
 <br />
 
@@ -279,6 +312,7 @@ ASR_DEVICE=cuda
 - 🔌 **Tương thích API**: định dạng OpenAI API
 - 🖥️ **Hỗ trợ GPU**: NVIDIA CUDA 12.8
 - 🛠️ **Thư viện client**: OpenAI Python SDK
+- 🧪 **Kiểm thử**: pytest + ruff, GitHub Actions
 
 <br />
 

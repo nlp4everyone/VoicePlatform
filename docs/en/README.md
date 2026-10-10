@@ -42,6 +42,7 @@ The service is built with FastAPI and Ray Serve and offers an OpenAI-compatible 
 | Transcription | HTTP | `POST /v1/audio/transcriptions` | ✅ |
 | Transcription with word timestamps | HTTP | `POST /v1/audio/transcriptions` with `timestamp_granularities=["word"]` | ✅ |
 | Transcription with segment timestamps | HTTP | `POST /v1/audio/transcriptions` with `timestamp_granularities=["segment"]` | ✅ |
+| Health check | HTTP | `GET /health` (200 `ok` / 503 `unhealthy`) | ✅ |
 | Transcription (streaming text) | HTTP (SSE) | - | ❌ |
 | Transcription (base64 audio) | HTTP | - | ❌ |
 | Realtime (live audio) | WebSocket | - | ❌ |
@@ -138,7 +139,7 @@ TranscriptionResult  →  TranscriptionResponse / WordResponse / SegmentResponse
 
 6. **Verify the service is running**
    ```bash
-   # Check that the API is serving
+   # Check that the replica is healthy (GET /health); docker ps also shows the container health
    make health
    # View service logs
    make logs
@@ -222,6 +223,14 @@ Sample audio files are included in `resources/` (`sample_vi.wav` for Vietnamese,
 
 <br />
 
+# 🩺 Health Checks & Warm-up
+
+- **`GET /health`** returns `200 {"status": "ok"}` while the replica can still run the model and `503 {"status": "unhealthy"}` otherwise. `make health` and the Docker healthcheck call it, so `docker ps` shows the container as `healthy` or `unhealthy`.
+- **Replica restart**: Ray Serve calls `ASRService.check_health()` every `health_check_period_s` (`config/serve.yaml`). On CUDA it allocates a tiny tensor, so a broken CUDA context (e.g. an Xid or ECC error) raises and Serve restarts the replica. The Docker healthcheck only reports status; it does not restart the container.
+- **Warm-up**: each replica transcribes `resources/sample_vi.wav` at startup (batch sizes 1 and `MAX_BATCH_SIZE`, with and without timestamps) before Serve routes traffic to it, so the first real request does not pay for CUDA initialization. This also applies to replicas restarted after a failed health check. Set `ASR_WARMUP=false` to skip it.
+
+<br />
+
 # ⚙️ Configuration
 
 ## 🎛️ Serving Parameters
@@ -236,6 +245,7 @@ Model and batching parameters are set in `config/config.toml`; each can be overr
 | `ASR_MODEL_NAME` | `nvidia/parakeet-ctc-0.6b-vi` | NeMo Parakeet model to load (name must start with `nvidia/parakeet`) |
 | `ASR_DEVICE` | `auto` | `auto`, `cuda` or `cpu` |
 | `SPLIT_MIXED_BATCH` | `true` | Run timestamp and non-timestamp requests as separate GPU sub-calls |
+| `WARMUP` | `true` | Transcribe `resources/sample_vi.wav` at startup (batch sizes 1 and `MAX_BATCH_SIZE`, with and without timestamps) so each replica is warm before taking traffic |
 
 ## 🌍 Environment Variables
 
@@ -250,6 +260,25 @@ RAY_DASHBOARD_PORT=8265                 # Host port of the Ray dashboard
 ASR_MAX_BATCH_SIZE=16
 ASR_DEVICE=cuda
 ```
+
+<br />
+
+# 🧪 Testing
+
+The test suite runs on CPU and needs neither a GPU nor NeMo: NeMo is replaced by a fake module in `tests/conftest.py`, and `ASRService` is driven through FastAPI's `TestClient` with a fake recognizer. It covers the batching helper, audio decoding, settings, the recognizer, and the API (transcription, error responses, `/health`, warm-up). It does not load the real model, so check that on a GPU machine with `make up`.
+
+```bash
+# One-time setup (FFmpeg and libmagic must be installed, e.g. apt install ffmpeg libmagic1)
+uv venv
+uv pip install --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple \
+    --index-strategy unsafe-best-match -r tests/requirements.txt
+
+make test PYTHON=.venv/bin/python   # pytest
+make lint PYTHON=.venv/bin/python   # ruff
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the same lint and tests on every push to the `ray/nvidia_asr` branch. It does not deploy anything.
 
 <br />
 
@@ -268,6 +297,10 @@ ASR_DEVICE=cuda
 - [x] 🕒 Word-level and segment-level timestamps
 - [x] 📝 Example implementations (single and concurrent requests)
 - [x] ⏱️ RTF measurement on the sample audio
+- [x] 🧪 CPU unit and integration tests with GitHub Actions CI
+- [ ] 🔐 Authentication: add an API key (via header) or put the service behind a gateway
+- [ ] 🔎 Request ID and structured logs, to trace errors
+- [ ] 📊 Metrics (latency, RTF, audio length, batch size, error rate) via Ray's Prometheus exporter and Grafana
 
 <br />
 
@@ -279,6 +312,7 @@ ASR_DEVICE=cuda
 - 🔌 **API Compatibility**: OpenAI API format
 - 🖥️ **GPU Support**: NVIDIA CUDA 12.8
 - 🛠️ **Client Libraries**: OpenAI Python SDK
+- 🧪 **Testing**: pytest + ruff, GitHub Actions
 
 <br />
 

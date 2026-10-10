@@ -101,6 +101,7 @@ Tham số model và batching nằm trong `config/config.toml`; replica, tài ngu
 | `MAX_BATCH_SIZE` | `8` | Số item tối đa mỗi GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Thời gian chờ tối đa để điền đầy batch (giây) |
 | `DECODE_WORKERS` | `4` | Số luồng giải mã audio mỗi replica |
+| `WARMUP` | `true` | Chạy inference mẫu lúc khởi động để mỗi replica được làm nóng trước khi nhận traffic |
 
 ### Model
 
@@ -119,6 +120,7 @@ Tham số model và batching nằm trong `config/config.toml`; replica, tài ngu
 | `applications[0].deployments[0].num_replicas` | Số replica ASRService |
 | `...max_ongoing_requests` | Số request đang xử lý tối đa mỗi replica |
 | `...max_queued_requests` | Số request chờ tối đa ngoài `max_ongoing_requests` (mặc định `32`); khi đầy, request mới nhận 503 |
+| `...health_check_period_s` / `health_check_timeout_s` | Tần suất Serve gọi `check_health()` trên replica (mặc định `10`) và thời gian tối đa cho mỗi lần (mặc định `30`). Check lỗi thì replica được restart; check cấp phát một tensor nhỏ trên GPU nên phát hiện được CUDA context hỏng |
 | `...ray_actor_options.num_gpus` / `num_cpus` | GPU và CPU dành cho mỗi replica |
 
 ### Biến môi trường (`.env` / `docker-compose.yml`)
@@ -154,9 +156,14 @@ VoicePlatform/
 │   │   ├── audio/io.py                 # load_audio_from_bytes, is_audio_file
 │   │   └── transcription/helper.py     # process_batch_transcription
 │   └── schema/transcription/           # TranscriptionResult, các kiểu response
-├── config/config.toml                  # Toàn bộ cấu hình runtime
+├── config/
+│   ├── config.toml                     # Cấu hình model và batching
+│   └── serve.yaml                      # Replica, tài nguyên, health check, HTTP
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
+├── resources/                          # Audio mẫu (cũng dùng để warm-up)
+├── tests/                              # Unit và integration test trên CPU (NeMo giả)
+├── .github/workflows/ci.yml            # Lint + test khi push
 └── examples/                           # Ví dụ sử dụng
 ```

@@ -101,6 +101,7 @@ Model and batching parameters live in `config/config.toml`; replicas, resources 
 | `MAX_BATCH_SIZE` | `8` | Max items per GPU batch |
 | `BATCH_WAIT_TIMEOUT_S` | `0.1` | Max wait time to fill a batch (seconds) |
 | `DECODE_WORKERS` | `4` | Audio decode threads per replica |
+| `WARMUP` | `true` | Run sample inferences at startup so each replica is warm before taking traffic |
 
 ### Model
 
@@ -119,6 +120,7 @@ Model and batching parameters live in `config/config.toml`; replicas, resources 
 | `applications[0].deployments[0].num_replicas` | Number of ASRService replicas |
 | `...max_ongoing_requests` | Max in-flight requests per replica |
 | `...max_queued_requests` | Max requests waiting beyond `max_ongoing_requests` (default `32`); when full, new requests get 503 |
+| `...health_check_period_s` / `health_check_timeout_s` | How often Serve calls `check_health()` on a replica (default `10`) and how long it may take (default `30`). A failed check restarts the replica; the check allocates a tiny tensor on the GPU, so a broken CUDA context is detected |
 | `...ray_actor_options.num_gpus` / `num_cpus` | GPUs and CPUs reserved per replica |
 
 ### Environment (`.env` / `docker-compose.yml`)
@@ -154,9 +156,14 @@ VoicePlatform/
 │   │   ├── audio/io.py                 # load_audio_from_bytes, is_audio_file
 │   │   └── transcription/helper.py     # process_batch_transcription
 │   └── schema/transcription/           # TranscriptionResult, response types
-├── config/config.toml                  # All runtime configuration
+├── config/
+│   ├── config.toml                     # Model and batching settings
+│   └── serve.yaml                      # Replicas, resources, health checks, HTTP options
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
+├── resources/                          # Sample audio (also used for warm-up)
+├── tests/                              # CPU unit and integration tests (NeMo faked)
+├── .github/workflows/ci.yml            # Lint + tests on push
 └── examples/                           # Usage examples
 ```

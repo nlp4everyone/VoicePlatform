@@ -34,6 +34,9 @@ serve run config/serve.yaml  →  imports app.app:deployment
             │       │
             │       └── logger.info("ASR model loaded on CUDA/CPU")
             │
+            ├── if WARMUP: recognizer.warmup(sample_vi.wav, [1, MAX_BATCH_SIZE])
+            │       with and without timestamps; the replica takes traffic only after this
+            │
             ├── logger.info("ASRService ready | max_batch_size=N decode_workers=N")
             │
             ├── ThreadPoolExecutor(max_workers=DECODE_WORKERS)  ← dedicated audio decode pool

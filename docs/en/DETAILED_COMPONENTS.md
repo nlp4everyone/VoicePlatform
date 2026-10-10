@@ -9,10 +9,12 @@ Ray Serve deployment that owns the FastAPI ingress and the batch transcription l
 - `ray_actor_options.num_gpus` — GPU resources reserved per replica
 - `ray_actor_options.num_cpus` — one CPU reserved per audio decode thread (keep ≥ `DECODE_WORKERS`)
 - `max_ongoing_requests` — maximum in-flight requests per replica before Ray Serve applies backpressure
+- `health_check_period_s` / `health_check_timeout_s` — how often Serve calls `check_health()` and how long it may take
 
 **`__init__()`**
 - Re-applies `ray.serve` log level to INFO (Ray Serve resets it during actor initialization)
 - Calls `RecognizerFactory.create()` to load the ASR model
+- If `WARMUP` is on, decodes `resources/sample_vi.wav` and calls `warmup()` on the recognizer, so the replica is warm before Serve routes traffic to it
 - Creates a `ThreadPoolExecutor(max_workers=DECODE_WORKERS)` for audio decoding — an explicit, bounded pool instead of asyncio's default executor
 - Creates a `ThreadPoolExecutor(max_workers=1)` — a single dedicated thread keeps all GPU work serialized and prevents CUDA context migration across threads
 
@@ -22,6 +24,10 @@ Ray Serve deployment that owns the FastAPI ingress and the batch transcription l
 - Decodes the audio on the decode executor; undecodable or empty audio is rejected with `InvalidAudioException` for this request only
 - Calls `batched_transcribe` directly (no deployment handle) so each request holds a single `max_ongoing_requests` slot, and awaits the result
 - Formats the response based on `timestamp_granularity`
+
+**`check_health()`** — called by Ray Serve; delegates to the recognizer's `check_health()`. Raising makes Serve restart the replica.
+
+**`health()`** — `GET /health`: runs `check_health()` and returns `200 {"status": "ok"}`, or `503 {"status": "unhealthy"}` if it raises.
 
 **`batched_transcribe()`** — `@serve.batch` handler
 - Receives a batch of `(waveform, granularity)` pairs aggregated by Ray Serve; audio is already decoded, so one bad upload cannot fail the batch
@@ -62,6 +68,10 @@ Unknown model names raise `ValueError` at startup, so the deployment fails inste
 - Runs inference under `torch.autocast(device_type="cuda")`, enabled only when the device is CUDA
 - Restores original order after inference
 - Returns `List[TranscriptionResult]`; timestamps are rounded to `precision` decimal places
+
+**`check_health()`** — on CUDA, allocates a one-element tensor; this fails once the CUDA context is broken. It does not synchronize, so a long-running batch cannot stall the check. No-op on CPU.
+
+**`warmup(audio, batch_sizes)`** — transcribes the sample at each batch size, with and without timestamps, then synchronizes CUDA.
 
 **Properties:** `model_name`, `supported_models`
 

@@ -51,8 +51,8 @@ logs: ## Follow service logs
 ps: ## Show service status
 	$(COMPOSE) ps
 
-health: ## Check that the API is serving (FastAPI docs page)
-	@curl -sf -o /dev/null http://localhost:$(RAY_FASTAPI_PORT)/docs && echo "OK" || (echo "Service is not healthy" && exit 1)
+health: ## Check that the Serve proxy is healthy (/-/healthz)
+	@curl -sf -o /dev/null http://localhost:$(RAY_FASTAPI_PORT)/-/healthz && echo "OK" || (echo "Service is not healthy" && exit 1)
 
 clean: ## Stop the service and remove its containers, networks and images
 	$(COMPOSE) down --rmi local

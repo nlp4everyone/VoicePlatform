@@ -1,5 +1,6 @@
 # FastAPI components
 from fastapi import UploadFile, File, Form, FastAPI
+from fastapi.responses import JSONResponse
 # Ray Serve for deployment
 from ray import serve
 # Type hints
@@ -106,6 +107,20 @@ class ASRService:
         # Single-thread executor keeps GPU work pinned to one thread, avoiding
         # CUDA context migration and pool contention from asyncio's default executor.
         self._gpu_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    def check_health(self):
+        """Called by Ray Serve every health_check_period_s; raising restarts the replica."""
+        self._asr_model.check_health()
+
+    @asr_app.get("/health", tags=["Audio"], include_in_schema=False)
+    async def health(self):
+        """Replica-level health: 200 if the model can still run, 503 otherwise."""
+        try:
+            self.check_health()
+        except Exception as exc:
+            logger.error(f"Health check failed: {exc}")
+            return JSONResponse(status_code=503, content={"status": "unhealthy"})
+        return {"status": "ok"}
 
     @serve.batch(max_batch_size=settings.MAX_BATCH_SIZE,
                  batch_wait_timeout_s=settings.BATCH_WAIT_TIMEOUT_S)

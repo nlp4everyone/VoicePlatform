@@ -38,4 +38,10 @@ services:
     shm_size: "16gb"                  # Shared memory for Ray object store
     tmpfs:
       - /dev/shm:size=16g             # Shared memory in RAM
+    healthcheck:                      # Marks the container (un)healthy in `docker ps`
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s              # First start downloads and loads the model
     restart: unless-stopped           # Auto-restart unless manually stopped

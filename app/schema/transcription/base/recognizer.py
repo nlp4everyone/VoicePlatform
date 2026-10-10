@@ -31,6 +31,14 @@ class BaseRecognizer:
         """
         return self._model_name
 
+    def check_health(self) -> None:
+        """
+        Verify the recognizer can still run. Raise if it cannot.
+
+        Called periodically by the serving layer; a raised exception marks the
+        replica unhealthy so it gets restarted. The default has nothing to check.
+        """
+
     def transcribe(self,
                     audio :Union[str,bytes]) -> TranscriptionResult:
         """

@@ -86,6 +86,17 @@ class ParakeetRecognizer(BaseRecognizer):
 
         self.model.eval()
 
+    def check_health(self) -> None:
+        """
+        Raise if the GPU is no longer usable.
+
+        A tiny allocation fails once the CUDA context is broken (e.g. an Xid
+        or ECC error), which a plain torch.cuda.is_available() would not catch.
+        It does not synchronize, so a long-running batch cannot stall the check.
+        """
+        if self._device == "cuda":
+            torch.empty(1, device="cuda")
+
     @property
     def model_name(self) -> str:
         """

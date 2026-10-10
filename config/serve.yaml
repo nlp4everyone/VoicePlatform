@@ -19,6 +19,8 @@ applications:
       - name: ASRService
         num_replicas: 1  # one model copy; needs one GPU per replica
         max_ongoing_requests: 16  # in-flight requests per replica
+        health_check_period_s: 10  # how often Serve calls check_health() on a replica
+        health_check_timeout_s: 30  # a check slower than this counts as failed; the replica is restarted
         max_queued_requests: 32  # queue beyond max_ongoing; when full, reject with 503
         ray_actor_options:
           num_gpus: 1  # GPUs reserved per replica

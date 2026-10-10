@@ -126,7 +126,7 @@ async def main():
     max_latency = max(latency_values)
     avg_latency = sum(latency_values) / len(latency_values)
 
-    print(f"\nLatency Statistics:")
+    print("\nLatency Statistics:")
     print(f"  Min: {min_latency:.3f}s")
     print(f"  Max: {max_latency:.3f}s")
     print(f"  Avg: {avg_latency:.3f}s")

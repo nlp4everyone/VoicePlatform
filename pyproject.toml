@@ -41,3 +41,27 @@ dependencies = [
 [tool.uv]
 # Application, not a library: install the dependencies only
 package = false
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+filterwarnings = [
+    # Test instances of the Serve class are never torn down by Ray, so its async __del__ is never awaited
+    "ignore:coroutine .*__del__.* was never awaited:RuntimeWarning",
+]
+markers = [
+    "gpu: needs a CUDA GPU and the real NeMo model (not run in CI)",
+]
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [".venv", "models", "resources"]
+
+[tool.ruff.lint]
+# Correctness only (pyflakes + pycodestyle errors); style rules are left off
+# so existing code does not need a mass rewrite.
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ files re-export names on purpose
+"__init__.py" = ["F401"]

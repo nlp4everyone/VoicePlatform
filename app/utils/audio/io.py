@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple
 from torchcodec.decoders import AudioDecoder
 import soundfile as sf
 import io, torch, magic, logging

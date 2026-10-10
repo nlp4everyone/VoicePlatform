@@ -12,7 +12,10 @@ export
 RAY_FASTAPI_PORT   ?= 8000
 RAY_DASHBOARD_PORT ?= 8265
 
-.PHONY: help env build prefetch up start down restart logs ps health clean
+# Interpreter for test/lint (a venv with tests/requirements.txt installed)
+PYTHON ?= python
+
+.PHONY: help env build prefetch up start down restart logs ps health clean test lint
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -56,3 +59,9 @@ health: ## Check that the Serve proxy is healthy (/-/healthz)
 
 clean: ## Stop the service and remove its containers, networks and images
 	$(COMPOSE) down --rmi local
+
+test: ## Run the CPU test suite (needs tests/requirements.txt, no GPU or NeMo)
+	$(PYTHON) -m pytest
+
+lint: ## Check the code with ruff
+	$(PYTHON) -m ruff check .

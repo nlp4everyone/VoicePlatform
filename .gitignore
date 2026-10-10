@@ -19,4 +19,7 @@ app/utils/language_detect/__pycache__/
 app/utils/config_loader/__pycache__/
 app/utils/token_counter/__pycache__/
 app/utils/transcription/__pycache__/
+tests/__pycache__
+tests/unit/__pycache__
+tests/integration/__pycache__
 .venv

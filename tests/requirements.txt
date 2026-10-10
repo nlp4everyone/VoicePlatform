@@ -1,0 +1,24 @@
+# Dependencies for the CPU-only test suite (no NeMo, no GPU). Versions match uv.lock.
+# Install with:
+#   uv pip install --index-url https://download.pytorch.org/whl/cpu \
+#       --extra-index-url https://pypi.org/simple \
+#       --index-strategy unsafe-best-match -r tests/requirements.txt
+# torchcodec needs the FFmpeg shared libraries and python-magic needs libmagic
+# (apt: ffmpeg libmagic1).
+torch==2.14.1
+torchcodec==0.11.1
+soundfile==0.13.0
+python-magic==0.4.27
+pycld2==0.42
+tiktoken==0.9.0
+pydantic-settings==2.15.0
+ray[serve]==2.50.0
+fastapi==0.136.3
+starlette==0.52.1
+protobuf~=5.29.5
+python-multipart==0.0.20
+httpx==0.28.1
+
+# Test tooling
+pytest==8.4.2
+ruff==0.14.0

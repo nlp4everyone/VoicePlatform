@@ -10,3 +10,4 @@ DECODE_WORKERS=4
 ASR_MODEL_NAME="nvidia/parakeet-ctc-0.6b-vi"
 ASR_DEVICE="auto"
 SPLIT_MIXED_BATCH=true
+WARMUP=true

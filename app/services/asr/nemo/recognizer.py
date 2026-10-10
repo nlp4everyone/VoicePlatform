@@ -97,6 +97,18 @@ class ParakeetRecognizer(BaseRecognizer):
         if self._device == "cuda":
             torch.empty(1, device="cuda")
 
+    def warmup(self, audio: torch.Tensor, batch_sizes: List[int]) -> None:
+        """
+        Transcribe the sample at each batch size, with and without timestamps.
+
+        The timestamp path decodes and aligns differently, so it is warmed separately.
+        """
+        for batch_size in sorted(set(batch_sizes)):
+            for enable_timestamps in (False, True):
+                self.transcribe([audio] * batch_size, enable_timestamps=enable_timestamps)
+        if self._device == "cuda":
+            torch.cuda.synchronize()
+
     @property
     def model_name(self) -> str:
         """

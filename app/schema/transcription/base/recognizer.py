@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Any, List, Union
 from app.schema.transcription.response import TranscriptionResult
 
 class BaseRecognizer:
@@ -37,6 +37,17 @@ class BaseRecognizer:
 
         Called periodically by the serving layer; a raised exception marks the
         replica unhealthy so it gets restarted. The default has nothing to check.
+        """
+
+    def warmup(self, audio: Any, batch_sizes: List[int]) -> None:
+        """
+        Run sample inferences so the first real request does not pay one-time
+        costs (CUDA kernel/cuDNN init, allocator growth). The default has
+        nothing to warm up.
+
+        Args:
+            audio: Sample waveform (mono, 16 kHz tensor) to transcribe.
+            batch_sizes: Batch sizes to exercise.
         """
 
     def transcribe(self,

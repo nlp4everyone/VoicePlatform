@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     ASR_DEVICE: Literal["auto", "cuda", "cpu"] = Field("auto",
                                                        validation_alias="ASR_DEVICE")
     SPLIT_MIXED_BATCH: bool = True
+    # Sample inference at startup, once per replica, before it accepts traffic
+    WARMUP: bool = True
 
     @classmethod
     def settings_customise_sources(cls, settings_cls,

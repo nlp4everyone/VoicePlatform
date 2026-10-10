@@ -44,6 +44,9 @@ for _nemo_logger in ("nemo", "nemo_logger", "lightning", "pytorch_lightning",
 logging.getLogger("ray.serve").setLevel(logging.INFO)
 logger = logging.getLogger("ray.serve")
 
+# Sample clip used to warm up each replica at startup
+WARMUP_SAMPLE = Path(__file__).resolve().parents[3] / "resources" / "sample_vi.wav"
+
 # Define tags metadata for API documentation
 tags_metadata = [
     {
@@ -92,6 +95,13 @@ class ASRService:
         # Initialize ASR model using factory pattern with configuration
         self._asr_model = RecognizerFactory.create(model_name=settings.ASR_MODEL_NAME,
                                                    device=settings.ASR_DEVICE)
+
+        # Each replica runs __init__ itself, so every replica is warmed up before
+        # Serve routes traffic to it, whatever num_replicas is.
+        if settings.WARMUP:
+            logger.info("Warming up ASR model")
+            waveform, _ = load_audio_from_bytes(WARMUP_SAMPLE.read_bytes())
+            self._asr_model.warmup(waveform, batch_sizes=[1, settings.MAX_BATCH_SIZE])
 
         logger.info(
             f"ASRService ready | max_batch_size={settings.MAX_BATCH_SIZE} "

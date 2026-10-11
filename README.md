@@ -244,6 +244,31 @@ API_PORT=8000                           # Host port; the container always listen
 
 > ✅ The server binds to `0.0.0.0` inside the container, so set `VIENEU_API_KEY` before exposing the port beyond your machine. The key is checked on every `/v1/*` request but not on `/health`.
 
+## ⚡ Performance Tuning
+
+The upstream engine is already optimized: one CUDA graph per audio frame (`VIENEU_FUSED_FRAME=1` by default), continuous batching on a single GPU worker, and bfloat16 picked automatically on GPUs that support it. `torch.compile` is not used on purpose (it needs a C++ toolchain). What is left to tune, roughly in order of impact:
+
+1. 🎯 **Match `VIENEU_MAX_STREAMS` to the real load.** The codec, not the backbone, is the cost: each codec call takes about 65 ms plus about 2.5 ms per *reserved* slot, even when the slot is idle. Upstream numbers on an RTX 3060:
+
+   | `VIENEU_MAX_STREAMS` | Concurrent streams | First audio | RTF |
+   |----------------------|--------------------|-------------|-----|
+   | 16 | 1 | ~115 ms | |
+   | 16 | 2–8 | 130–165 ms | |
+   | 16 | 16 starting at once | ~185 ms (median) | 0.59 (worst) |
+   | 32 | 1 | | 0.70 |
+   | 32 | 32 at once | ~450 ms | 0.93 |
+
+   If you rarely serve more than a few requests at once, `VIENEU_MAX_STREAMS=4` or `8` lowers both RTF and TTFA, at the cost of peak concurrency. Keep `VIENEU_QUEUE` in line with it.
+2. 💧 **`VIENEU_WATERMARK=0`** skips the watermark applied to every audio chunk. Only disable it if you do not need AI-generated audio to be marked.
+3. 📶 **Lower `sample_rate`** (`24000`, `16000`) in the request when the client allows it. Resampling runs per chunk with no extra latency, and the payload is 2–3× smaller. It does not make generation faster.
+4. ✂️ **Keep inputs reasonably short.** Text is chunked at 256 characters (`max_chars`); splitting long text sensibly gives steadier time-to-first-audio.
+5. 🎙️ **Enroll cloned voices once** with `POST /v1/voices` (about 2.7 s) and then request them by name, instead of sending reference audio on every request.
+6. 🖥️ **Give the service the GPU to itself.** Other GPU workloads make RTF fluctuate; replace `count: all` with `device_ids` in `docker-compose.yml` to pin a specific GPU. Avoid frequent restarts, since each start re-captures the CUDA graphs.
+
+> ⚠️ The codec's own `use_cuda_graph` mode is about 3× faster but produces wrong audio, so upstream does not use it. Do not try to enable it.
+
+> ℹ️ Measure before changing defaults: run the examples with `VIENEU_MAX_STREAMS` set to `4`, `8` and `16`, then compare the `ttfa` and `rtf` values in `make logs`.
+
 ## 🔄 Upgrading VieNeu-TTS
 
 The image installs the exact dependency set locked by one upstream commit. To upgrade, set `VIENEU_REF` in `.env` to another commit of [pnnbao97/VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) and run `make up`. The CUDA runtime version in the `Dockerfile` (`nvidia/cuda:12.8.0-runtime`) must match the torch build in that commit's `uv.lock`.

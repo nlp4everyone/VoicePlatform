@@ -1,0 +1,5 @@
+.env
+.idea/
+examples/__pycache__
+results/
+.claude

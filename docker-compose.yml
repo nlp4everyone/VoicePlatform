@@ -1,0 +1,46 @@
+services:
+  vieneu-tts:
+    build:
+      context: .
+      args:
+        VIENEU_REF: ${VIENEU_REF:-85344322b7258b4e25479b692e8e3396baf9db34}
+    image: vieneu-tts:v3-turbo
+    container_name: vieneu-tts-serve
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Concurrent streams batched on the GPU (continuous batching); extra requests
+      # wait in the queue up to VIENEU_QUEUE_TIMEOUT seconds, then get HTTP 429.
+      - VIENEU_MAX_STREAMS=${VIENEU_MAX_STREAMS:-16}
+      - VIENEU_QUEUE=${VIENEU_QUEUE:-16}
+      - VIENEU_QUEUE_TIMEOUT=${VIENEU_QUEUE_TIMEOUT:-10}
+      - VIENEU_API_KEY=${VIENEU_API_KEY:-}
+      - VIENEU_WATERMARK=${VIENEU_WATERMARK:-1}
+      - HF_TOKEN=${HF_TOKEN:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Named volume: Docker copies the image's app-owned directory into it, so no host
+      # permissions to fix. Survives `make down` and `make clean`.
+      - hf-cache:/home/app/.cache/huggingface/hub
+    healthcheck:
+      # The runtime image has no curl, so probe with the bundled Python.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First start downloads the model and captures the CUDA graphs.
+      start_period: 180s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
+    # Explicit name so it never collides with a volume of another branch's compose project
+    name: vieneu-tts-hf-cache

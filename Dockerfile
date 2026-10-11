@@ -14,9 +14,11 @@ RUN git init -q . \
     && git fetch -q --depth 1 origin "${VIENEU_REF}" \
     && git checkout -q FETCH_HEAD
 
-# --- Stage: base (CUDA runtime + Python 3.12 + non-root user) ---
-# The runtime image is enough: the CUDA graphs are captured by PyTorch, no compiler needed.
-FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04 AS base
+# --- Stage: base (CUDA base + Python 3.12 + non-root user) ---
+# The `base` flavour (no CUDA libraries) is enough: the torch cu128 wheels ship their own
+# cuBLAS/cuDNN/NCCL under site-packages/nvidia, so the `runtime` flavour would store them twice
+# (~2.6 GB). No compiler is needed either: the CUDA graphs are captured by PyTorch.
+FROM nvidia/cuda:12.8.0-base-ubuntu24.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -41,12 +43,14 @@ RUN (getent passwd 1000 | cut -d: -f1 | xargs -r userdel -r || true) \
 FROM base AS deps
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /uvx /bin/
 WORKDIR /workspace
 COPY --from=src --chown=app:app /src/pyproject.toml /src/uv.lock ./
 USER app
 # Wheels only, no dev group, no project build: the app runs straight from the source tree.
-RUN uv sync --frozen --no-dev --extra cuda --no-install-project --no-build
+# The uv cache lives in a BuildKit cache mount, so a rebuild does not download torch again.
+RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
+    uv sync --frozen --no-dev --extra cuda --no-install-project --no-build
 
 # --- Stage: runtime (venv + sources only, no uv, no build cache) ---
 FROM base AS runtime

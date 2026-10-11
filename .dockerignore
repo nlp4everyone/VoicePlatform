@@ -1,0 +1,2 @@
+# The build fetches its sources from git (stage `src`): no local file is needed.
+*

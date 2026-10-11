@@ -63,7 +63,7 @@ Built on the VieNeu-TTS PyTorch engine (CUDA graphs, continuous batching across 
 2. **🛠️ Software Dependencies**
    - 🐳 **Docker and Docker Compose**
    - 🎮 **NVIDIA Container Toolkit** (for GPU support)
-   - ⚡ **NVIDIA driver** compatible with CUDA 12.8 (the `nvidia/cuda:12.8.0-runtime` base image; a host CUDA Toolkit is not required, CUDA ships inside the image)
+   - ⚡ **NVIDIA driver** compatible with CUDA 12.8 (a host CUDA Toolkit is not required: the CUDA libraries ship inside the image with the torch `cu128` wheels)
 
 <br />
 
@@ -271,7 +271,7 @@ The upstream engine is already optimized: one CUDA graph per audio frame (`VIENE
 
 ## 🔄 Upgrading VieNeu-TTS
 
-The image installs the exact dependency set locked by one upstream commit. To upgrade, set `VIENEU_REF` in `.env` to another commit of [pnnbao97/VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) and run `make up`. The CUDA runtime version in the `Dockerfile` (`nvidia/cuda:12.8.0-runtime`) must match the torch build in that commit's `uv.lock`.
+The image installs the exact dependency set locked by one upstream commit. To upgrade, set `VIENEU_REF` in `.env` to another commit of [pnnbao97/VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) and run `make up`. The CUDA version of the base image in the `Dockerfile` (`nvidia/cuda:12.8.0-base`) should match the torch build in that commit's `uv.lock` (`+cu128`).
 
 <br />
 
@@ -289,7 +289,7 @@ The image installs the exact dependency set locked by one upstream commit. To up
 - 🎯 **TTS Model**: VieNeu-TTS v3 Turbo (`pnnbao-ump/VieNeu-TTS-v3-Turbo`)
 - ⚡ **Inference Engine**: VieNeu-TTS PyTorch backend (CUDA graphs, `torch==2.8.0`)
 - 🌐 **Server**: FastAPI + Uvicorn (`apps/openai_speech.py` from VieNeu-TTS)
-- 🐳 **Containerization**: Docker & Docker Compose (multi-stage build on `nvidia/cuda:12.8.0-runtime`)
+- 🐳 **Containerization**: Docker & Docker Compose (multi-stage build on `nvidia/cuda:12.8.0-base`, about 12.4 GB)
 - 🔌 **API Compatibility**: OpenAI API format
 - 🖥️ **GPU Support**: NVIDIA CUDA
 - 📊 **Monitoring**: Docker logging and `/health`
